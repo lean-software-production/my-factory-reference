@@ -1,12 +1,21 @@
 // Command agent is a test double for a coding agent such as pi. It is called
-// the way the factory calls pi (`agent -p <prompt>`), in the target folder,
-// and plays the machine its prompt says it is: the planner, the doer or the
-// validator.
+// the way the factory calls pi, in the target folder:
+//
+//	agent -p --no-context-files --no-skills --model <model> \
+//	    --append-system-prompt <AGENTS.md> <prompt>
+//
+// with PI_CODING_AGENT_DIR set to the machine's folder. It plays the machine
+// the prompt asks a result of: the planner, the doer or the validator.
+//
+// Like pi, it is given the AGENTS.md named by --append-system-prompt, and
+// signs in with the auth.json in PI_CODING_AGENT_DIR or else with an API key
+// from the environment; with neither it fails, as pi does.
 //
 // It keeps everything in the folder named by DOUBLE_DIR:
 //   - calls.log: one line per call, the name it was called by (pi or agent)
 //     and the machine it played
-//   - prompts/<n>.txt: what call n was given
+//   - prompts/<n>.txt: what call n was given: the AGENTS.md, then the prompt
+//   - signins/<n>.txt: how call n signed in: the login it found or "api key"
 //   - behaviour.json: what it does, written by the step definitions
 //
 // Without a behaviour it answers {"complete": true} and does nothing.
@@ -54,8 +63,10 @@ func main() {
 		answer(map[string]any{"complete": true})
 		return
 	}
-	role := machineIn(strings.Join(os.Args[1:], "\n"))
-	logCall(dir, role)
+	prompt := os.Args[len(os.Args)-1]
+	role := machineIn(prompt)
+	logCall(dir, role, prompt)
+	signIn(dir)
 
 	var b Behaviour
 	raw, err := os.ReadFile(filepath.Join(dir, "behaviour.json"))
@@ -217,25 +228,33 @@ func writePlan(prose bool, tasks []string, done map[string]bool) {
 	}
 }
 
-var youAre = regexp.MustCompile(`You are the (planner|doer|validator) of`)
+// resultField is the field of the result each machine is asked for, and so
+// the machine that is being asked.
+var resultField = regexp.MustCompile(`with the field "(complete|satisfied|task)"`)
 
-// machineIn is the machine a prompt tells the agent to be.
+var machineOf = map[string]string{"complete": "planner", "satisfied": "validator", "task": "doer"}
+
+// machineIn is the machine a prompt asks a result of.
 func machineIn(prompt string) string {
-	if m := youAre.FindStringSubmatch(prompt); m != nil {
-		return m[1]
+	if m := resultField.FindStringSubmatch(prompt); m != nil {
+		return machineOf[m[1]]
 	}
 	return "unknown"
 }
 
-// logCall records the call's name and role, and what it was given.
-func logCall(dir, role string) {
+// logCall records the call's name and role, and what it was given: the
+// instructions in the AGENTS.md it was pointed at, then the prompt.
+func logCall(dir, role, prompt string) {
 	prompts := filepath.Join(dir, "prompts")
 	if err := os.MkdirAll(prompts, 0o755); err != nil {
 		fail("%v", err)
 	}
 	entries, _ := os.ReadDir(prompts)
 	n := len(entries) + 1
-	given := strings.Join(os.Args[1:], "\n")
+	given := prompt
+	if instructions := appendedInstructions(); instructions != "" {
+		given = instructions + "\n---\n" + prompt
+	}
 	if err := os.WriteFile(filepath.Join(prompts, fmt.Sprintf("%d.txt", n)), []byte(given), 0o644); err != nil {
 		fail("%v", err)
 	}
@@ -245,6 +264,53 @@ func logCall(dir, role string) {
 	}
 	defer log.Close()
 	fmt.Fprintln(log, filepath.Base(os.Args[0]), role)
+}
+
+// appendedInstructions are the contents of the file named by
+// --append-system-prompt, if the double was given one.
+func appendedInstructions() string {
+	for i, arg := range os.Args {
+		if arg == "--append-system-prompt" && i+1 < len(os.Args) {
+			raw, err := os.ReadFile(os.Args[i+1])
+			if err != nil {
+				fail("reading %s: %v", os.Args[i+1], err)
+			}
+			return string(raw)
+		}
+	}
+	return ""
+}
+
+// signIn notes how this call signs in, as pi would: with the login in its
+// configuration folder, else with an API key. With neither it fails.
+func signIn(dir string) {
+	signins := filepath.Join(dir, "signins")
+	if err := os.MkdirAll(signins, 0o755); err != nil {
+		fail("%v", err)
+	}
+	entries, _ := os.ReadDir(signins)
+	how := ""
+	if login, err := os.ReadFile(filepath.Join(os.Getenv("PI_CODING_AGENT_DIR"), "auth.json")); err == nil {
+		how = "login " + strings.TrimSpace(string(login))
+	} else if hasAPIKey() {
+		how = "api key"
+	}
+	if err := os.WriteFile(filepath.Join(signins, fmt.Sprintf("%d.txt", len(entries)+1)), []byte(how), 0o644); err != nil {
+		fail("%v", err)
+	}
+	if how == "" {
+		fmt.Fprintln(os.Stderr, "No API key found. Use /login to log into a provider.")
+		os.Exit(1)
+	}
+}
+
+func hasAPIKey() bool {
+	for _, kv := range os.Environ() {
+		if name, value, _ := strings.Cut(kv, "="); strings.HasSuffix(name, "_API_KEY") && value != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func answer(result map[string]any) {

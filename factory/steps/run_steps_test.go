@@ -81,7 +81,23 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		}
 		return nil
 	})
-	sc.Step(`^the validator was given "([^"]*)"$`, w.validatorWasGiven)
+	sc.Step(`^the (doer|validator) was given "([^"]*)"$`, func(role, words string) error {
+		w.subject = role
+		return w.wasGiven(role, words)
+	})
+	sc.Step(`^it was not given "([^"]*)"$`, func(words string) error {
+		if w.subject == "" {
+			return fmt.Errorf("no machine has been said to be given anything")
+		}
+		prompt, err := w.lastPrompt(w.subject)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(prompt, words) {
+			return fmt.Errorf("the %s was given %q:\n%s", w.subject, words, prompt)
+		}
+		return nil
+	})
 	sc.Step(`^it was not given the work for the first task$`, func() error {
 		prompt, err := w.lastPrompt("validator")
 		if err != nil {
@@ -107,13 +123,17 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		})
 }
 
-func (w *world) validatorWasGiven(words string) error {
-	prompt, err := w.lastPrompt("validator")
+func (w *world) validatorWasGiven(words string) error { return w.wasGiven("validator", words) }
+
+// wasGiven checks the machine's instructions and prompt, the latest time it
+// was called, hold the words.
+func (w *world) wasGiven(role, words string) error {
+	prompt, err := w.lastPrompt(role)
 	if err != nil {
 		return err
 	}
 	if !strings.Contains(prompt, words) {
-		return fmt.Errorf("the validator was not given %q; it was given:\n%s", words, prompt)
+		return fmt.Errorf("the %s was not given %q; it was given:\n%s", role, words, prompt)
 	}
 	return nil
 }

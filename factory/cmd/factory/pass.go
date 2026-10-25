@@ -14,11 +14,10 @@ type result map[string]any
 
 func (r result) complete() bool { return r["complete"] == true }
 
-// settings are what a run is told on the command line.
+// settings are the machines, and what a run is told on the command line.
 type settings struct {
 	planner, doer, validator machine
-	attempts                 int    // the most attempts a pass allows
-	lens                     string // what the validator looks for
+	attempts                 int // the most attempts a pass allows
 }
 
 // pass runs the planner if there is no plan. Otherwise the doer does the
@@ -56,7 +55,7 @@ func pass(set settings, seed, target string, checked bool) (result, error) {
 		if err != nil {
 			return nil, err
 		}
-		verdict, err := ask(set.validator, target, validatorPrompt(seed, plan, set.lens, changes))
+		verdict, err := ask(set.validator, target, validatorPrompt(seed, plan, changes))
 		if err != nil {
 			return nil, err
 		}
@@ -100,30 +99,27 @@ func ask(m machine, dir, prompt string) (result, error) {
 	return res, nil
 }
 
-func validatorPrompt(seed, plan, lens, changes string) string {
-	return fmt.Sprintf(`You are the validator of a software factory, working in this folder.
+// The prompts say what the factory knows and asks of a machine: where the
+// seed and the plan are, what the doer just did, what the validator found,
+// and the result it wants back. What a machine is for, and how it does its
+// job, are in its AGENTS.md.
 
-The seed, which says what to build, is %s
+func validatorPrompt(seed, plan, changes string) string {
+	return fmt.Sprintf(`The seed, which says what to build, is %s
 The plan is %s
 
-The doer has just done a task here. Its work is the changes in this folder that aren't committed yet. Git lists them:
+The doer has just done a task in this folder. Its work is the changes here that aren't committed yet. Git lists them:
 
 %s
 
-Look at them with git diff HEAD and by reading the new files. Check only that work, not what was committed before. Look at it through one lens only: %s. Raise only findings about that, and only real ones. Report on the work; change nothing.
-
 Finish your answer with your result: one line of JSON, on its own, with the field "satisfied" set to true if the work is good enough and false if not, and the field "findings" listing what is wrong. For example:
 {"satisfied": false, "findings": ["the new code has no test"]}
-`, seed, plan, changes, lens)
+`, seed, plan, changes)
 }
 
 func plannerPrompt(seed, plan string) string {
-	return fmt.Sprintf(`You are the planner of a software factory, working in this folder.
-
-The seed, which says what to build, is %s
-The plan goes in %s
-
-Read the seed and write the plan there: the seed broken into a few tasks, in order, each marked as not done. Don't build anything in this pass.
+	return fmt.Sprintf(`The seed, which says what to build, is %s
+There is no plan yet. It goes in %s
 
 Finish your answer with your result: one line of JSON, on its own, with the field "complete" set to true if every task in the plan is done and false if any is left. For example:
 {"complete": false}
@@ -139,17 +135,14 @@ func validated(findings string) string {
 	return fmt.Sprintf(`
 The validator was not satisfied with your last attempt. Its findings, as JSON:
 %s
-Put each right. Record each finding in the plan as a subtask of the task you are doing, and don't add it to the plan as a new task. Mark a subtask as done once you have put its finding right. The task itself is not done until every one of its subtasks is.
 `, findings)
 }
 
 func trackingPrompt(seed, plan string) string {
-	return fmt.Sprintf(`You are the planner of a software factory, working in this folder.
-
-The seed, which says what to build, is %s
+	return fmt.Sprintf(`The seed, which says what to build, is %s
 The plan is %s
 
-The doer's work on a task is committed in this folder's Git history. Mark as done in the plan each task whose work is committed, unless it has a subtask that is not done: a task is not done until its subtasks are, so leave such a task as it is. Change nothing else.
+The doer's work on a task is committed in this folder's Git history.
 
 Finish your answer with your result: one line of JSON, on its own, with the field "complete" set to true if every task in the plan is done and false if any is left. For example:
 {"complete": false}
@@ -157,12 +150,8 @@ Finish your answer with your result: one line of JSON, on its own, with the fiel
 }
 
 func doerPrompt(seed, plan, findings string) string {
-	return fmt.Sprintf(`You are the doer of a software factory, working in this folder.
-
-The seed, which says what to build, is %s
+	return fmt.Sprintf(`The seed, which says what to build, is %s
 The plan is %s
-
-Read the plan, pick the first task that isn't done and implement it in real code in this folder. Do only that one task, and leave the plan as it is. Don't commit: the factory commits your work.
 
 Finish your answer with your result: one line of JSON, on its own, with the field "task" naming the task you did. For example:
 {"task": "set up the project"}

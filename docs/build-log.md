@@ -163,3 +163,129 @@ overwritten homework 1's "Green" line; that's restored.)
 
 Real-agent checks after the fix: "The first task's work is untestable" and
 "A finding on the first task" pass (8m 38s together).
+
+## Homework 003: Machine configuration
+
+- **Adopted:** iteration `003-machine-configuration` from the tutorial's
+  `main`, at 17:27.
+- **Red:** with the adopted spec and homework 2's factory, 43 examples ran
+  (the 8 `@real-agent` ones left out): 37 passed and 6 had undefined steps
+  (476 steps: 451 passed, 15 undefined, 10 skipped). The 6 were the
+  examples new or reworded in `machine.feature`: the validator naming no
+  harness, the doer's and the validator's instructions, and the three login
+  examples. No step-drift problem in the tutorial and no regression: the
+  other 37 kept their words and passed.
+- **What changed in the factory:**
+  - Each machine has a folder, `factory/machines/<name>/`, holding its
+    `AGENTS.md`, a `machine.json` (`{"harness": "pi", "model":
+    "<provider>/<model>"}`) and a `.gitignore` that keeps everything but
+    those out of Git, its own login and pi's sessions included.
+  - The prompts in the factory's code are down to what the factory knows:
+    where the seed and plan are, the doer's changes for the validator, the
+    findings, and the result it wants. Everything about what a machine is
+    and how it works moved to its `AGENTS.md`, homework 2's rules about
+    subtasks and the validator's lens included. `--agent`, `--planner`,
+    `--doer`, `--validator` and `--lens` are gone: a machine names its own
+    harness, and the lens is a line of the validator's `AGENTS.md`
+    (`--attempts` stays).
+  - A harness is called the way the README calls pi: `PI_CODING_AGENT_DIR`
+    set to the machine's folder, then `-p --no-context-files --no-skills
+    --model <model> --append-system-prompt <folder>/AGENTS.md <prompt>`.
+    Only pi is wired up. A harness other than pi is called the same way (the
+    doubles rely on it), and the Claude Code and Codex recipes in the
+    README are not built.
+  - Before any machine is called, the factory checks that each machine
+    can sign in: its `auth.json` has an entry for the model's provider, or
+    the environment has that provider's API key (a small table of the
+    providers with a single key variable). Otherwise: "the doer cannot sign
+    in to ...".
+  - The factory finds `machines/` from its own binary (next to it, or in
+    the folder above it, which is where the launcher's `.build/` sits), not
+    from the working directory.
+- **Doubles:** the agent double now behaves like pi at the edge. It reads
+  the `AGENTS.md` it is pointed at, records how it signed in (the
+  `auth.json` in `PI_CODING_AGENT_DIR`, else an `*_API_KEY` in the
+  environment, else it fails like pi), and plays the machine whose result
+  field the prompt asks for. The steps copy the real `machines/` folders
+  (what Git keeps, never a login) into each example's copy of the factory,
+  give every machine the double as its harness and a stand-in login with
+  its own name in it. Examples that need an API key move the doer to the
+  `anthropic` provider, because `openai-codex` has logins and no key.
+- **Green:** 43 of 43 examples and 476 steps pass in about 25s.
+- **Mutation checks:** each of these made examples fail: leaving
+  `--append-system-prompt` out (2 examples); not setting
+  `PI_CODING_AGENT_DIR` (4); pointing every machine at the planner's
+  folder (4); skipping the sign-in check (1); a `.gitignore` that doesn't
+  ignore the login (1).
+- **Unit tests the doubles can't replace:** `TestHarnessIsCalledOnTheMachinesConfigurationOnly`
+  (the flags and environment a harness is called with),
+  `TestPromptsHoldNoInstructionsOfTheMachines`, and
+  `TestInstructionsKeepATaskOpenUntilItsSubtasksAreDone` (homework 2's
+  subtask rules, now checked in the `AGENTS.md` files).
+  `TestRelativePathsResolveFromCallerCwd` needed machine folders next to
+  its binary.
+- **Time:** about 10 minutes from the fetch to a green suite (17:27 to
+  about 17:37).
+- **README commands:** the README's commands run a real agent, so through
+  `bin/factory` I checked only the launcher and the checks before any
+  machine runs: a missing target and a missing seed are reported, and with
+  the doer's `auth.json` moved away the run stops with "the doer cannot
+  sign in to openai-codex", before creating the target. The "Once your
+  suite passes" section and the bonus round were skipped.
+
+### Machines' logins and models
+
+- Each machine's `auth.json` is a copy of `~/.pi/agent/auth.json`, made by
+  hand with `cp` (it also holds an `opencode-go` entry the machines don't
+  use). `git check-ignore` prints all three paths and `git add -n
+  factory/machines` lists only `.gitignore`, `AGENTS.md` and `machine.json`.
+  No login is committed.
+- **The wrapper still works with `PI_CODING_AGENT_DIR` set to a machine
+  folder.** It only adds `--provider openai-codex --model gpt-6-sol`, which
+  pi reads from the command line. What the folder changes is where the login
+  comes from, and that is the copied `auth.json`.
+- **The machines' `machine.json` name `openai-codex/gpt-6-sol`, and for real
+  runs they must name some model that the copied login can use.** The
+  machine folder has no `settings.json`, so without `--model` pi falls back
+  to its own default provider. Checked by hand: plain pi (no wrapper) in
+  an empty folder with the copied login and no model fails with a 401
+  from the wrong provider; with `--model openai-codex/gpt-6-sol` it
+  answers. So the factory now works with plain `pi` on this box too, and
+  the wrapper is no longer needed. With no login and a model, pi fails in
+  under a second with "No API key found for openai-codex".
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 60m`,
+with the pi wrapper first on the `PATH`: 17:39 to 18:04 (**25m 09s**),
+**8 of 8 pass** (the 8 of homeworks 1 and 2, plus the new one):
+
+- "Instructions above the target are not the machine's": 3m 48s. The folder
+  above the target says "apple", the doer's `AGENTS.md` says "plum", and
+  `CODEWORD` says plum.
+- "A Tetris with different details": 4m 30s.
+- "The work is given a seed and nothing else": 4m 31s.
+- "The plan comes from the seed": 18s.
+- "A validator that looks at testability": 3m 06s; "...at something else"
+  (internationalisation): 2m 34s.
+- "The first task's work is untestable": 3m 14s; "A finding on the first
+  task": 3m 06s.
+
+The steps for these use the real pi with the copied login in each machine's
+folder inside the example's temporary workspace, removed with it.
+
+### Problems found
+
+None in the tutorial or the starter that stopped the build. One to look at:
+
+- **The README's pi recipe leaves the runner's own skills in.** With
+  `PI_CODING_AGENT_DIR`, `--no-context-files` and `--append-system-prompt`
+  alone, a machine still lists the skills in the runner's
+  `~/.agents/skills` (checked: a pi started that way named
+  `talking-to-humans` from there). `--no-skills` removes them, and the
+  factory passes it. That fits the README's "none of yours", but the
+  recipe table doesn't say so. No PR raised: it is for the controller to
+  decide whether a README line is worth one.
+- Also noticed: the recipe's `--no-session` is left out of the factory's
+  call so the sessions stay in the machine's folder (ignored by Git) for
+  checking what a machine did.

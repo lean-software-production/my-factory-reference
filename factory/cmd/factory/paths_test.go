@@ -28,7 +28,21 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run := exec.Command(binary, "--seed", "s.md", "--target", "t", "--agent", agent)
+	// Each machine has a folder next to the binary, with a login of its own.
+	for _, role := range []string{"planner", "doer", "validator"} {
+		dir := filepath.Join(binDir, "machines", role)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		config := `{"harness": "` + agent + `", "model": "anthropic/test"}`
+		for name, text := range map[string]string{"machine.json": config, "AGENTS.md": "# " + role + "\n", "auth.json": `{"anthropic": {}}`} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	run := exec.Command(binary, "--seed", "s.md", "--target", "t")
 	run.Dir = cwd
 	out, err := run.CombinedOutput()
 	if err != nil {

@@ -40,7 +40,9 @@ func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the validator is always satisfied$`, func() {})       // likewise
 	sc.Step(`^the validator is not satisfied the first time$`, func() { w.does.Rejects, w.does.Finding = 1, finding })
 	sc.Step(`^the validator's lens is (\w+)$`, func(lens string) error {
-		w.lens = lens
+		if err := w.setLens(lens); err != nil {
+			return err
+		}
 		if w.realPi {
 			return w.useFlawedPlan()
 		}
@@ -54,9 +56,7 @@ func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the planner keeps its plan in prose$`, func() { w.does.PlannerProse = true })
 	sc.Step(`^the doer keeps its plan in prose$`, func() { w.does.DoerProse = true })
 
-	sc.Step(`^no harness is chosen$`, func() { w.agent = "" })
-	sc.Step(`^the doer cannot be run$`, func() { w.doer = filepath.Join(w.ws, "no-such-harness") })
-	sc.Step(`^every machine runs pi$`, func() { w.realPi = true })
+	sc.Step(`^the doer cannot be run$`, func() error { return w.setHarness("doer", filepath.Join(w.ws, "no-such-harness")) })
 
 	sc.Step(`^no seed is chosen$`, func() { w.noSeed = true })
 	sc.Step(`^the seed has been deleted$`, func() error { return os.Remove(w.seedPath()) })

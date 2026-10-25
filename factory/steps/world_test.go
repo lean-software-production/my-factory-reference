@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -44,17 +45,15 @@ type world struct {
 	repo      string // the test repository, where the factory is run from
 	doubleDir string // where the doubles log their calls and keep state
 
-	seed      string // as given on the command line, from repo
-	target    string // as given on the command line, from repo
-	noSeed    bool
-	noTarget  bool
-	agent     string // the harness chosen for every machine on the command line, if any
-	doer      string // the harness chosen for the doer alone, if any
-	validator string // the harness chosen for the validator alone, if any
-	attempts  int    // the most attempts a pass is allowed, if set
-	lens      string // what the validator looks for, if chosen
-	realPi    bool   // the agent is the real pi
-	does      behaviour
+	seed     string // as given on the command line, from repo
+	target   string // as given on the command line, from repo
+	noSeed   bool
+	noTarget bool
+	attempts int      // the most attempts a pass is allowed, if set
+	realPi   bool     // the machines run the real pi
+	env      []string // set in the factory's environment, as NAME=value
+	subject  string   // the machine the latest "was given" step was about
+	does     behaviour
 
 	planTasks []string          // the tasks of a plan an example wrote
 	targets   map[string]string // every target this example named, by path from repo
@@ -102,7 +101,6 @@ func (w *world) setUp() error {
 	}
 	w.repo = filepath.Join(ws, "repo")
 	w.doubleDir = filepath.Join(ws, "double")
-	w.agent = agentDouble
 	for _, dir := range []string{w.factoryDir(), filepath.Join(w.repo, "bin"), w.doubleDir} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
@@ -112,6 +110,9 @@ func (w *world) setUp() error {
 		return err
 	}
 	if err := os.Symlink("../factory/factory", filepath.Join(w.repo, "bin", "factory")); err != nil {
+		return err
+	}
+	if err := w.copyMachines(); err != nil {
 		return err
 	}
 	if _, err := git(w.repo, "init", "-q"); err != nil {
@@ -144,20 +145,8 @@ func (w *world) run(all bool) error {
 	if !w.noTarget {
 		args = append(args, "--target", w.target)
 	}
-	if w.agent != "" && !w.realPi {
-		args = append(args, "--agent", w.agent)
-	}
-	if w.doer != "" {
-		args = append(args, "--doer", w.doer)
-	}
-	if w.validator != "" {
-		args = append(args, "--validator", w.validator)
-	}
 	if w.attempts > 0 {
 		args = append(args, "--attempts", strconv.Itoa(w.attempts))
-	}
-	if w.lens != "" {
-		args = append(args, "--lens", w.lens)
 	}
 	if all {
 		args = append(args, "--all")
@@ -185,8 +174,14 @@ func (w *world) run(all bool) error {
 	if w.realPi {
 		limit = realRunLimit
 	} else {
+		// No machine signs in with an API key unless an example gives it one.
+		env = slices.DeleteFunc(env, func(kv string) bool {
+			name, _, _ := strings.Cut(kv, "=")
+			return strings.HasSuffix(name, "_API_KEY")
+		})
 		env = append(env, "PATH="+fakePiDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
+	env = append(env, w.env...)
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, filepath.Join(w.repo, "bin", "factory"), args...)
@@ -220,7 +215,8 @@ func (w *world) runToSuccess() error {
 // machine it was asked to be.
 type call struct {
 	name, role string
-	prompt     string
+	prompt     string // the machine's AGENTS.md, then the prompt
+	signedIn   string // how it signed in: its login, or "api key"
 }
 
 // calls lists the calls the doubles were given, in order.
@@ -242,7 +238,11 @@ func (w *world) calls() ([]call, error) {
 		if err != nil {
 			return nil, err
 		}
-		calls = append(calls, call{fields[0], fields[1], string(prompt)})
+		signedIn, err := os.ReadFile(filepath.Join(w.doubleDir, "signins", fmt.Sprintf("%d.txt", n+1)))
+		if err != nil {
+			return nil, err
+		}
+		calls = append(calls, call{fields[0], fields[1], string(prompt), string(signedIn)})
 	}
 	return calls, nil
 }
@@ -302,4 +302,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	w.registerTargetSteps(sc)
 	w.registerRealAgentSteps(sc)
 	w.registerValidationSteps(sc)
+	w.registerMachineSteps(sc)
 }

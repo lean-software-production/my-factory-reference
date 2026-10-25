@@ -57,7 +57,9 @@ func (w *world) firstAttemptIsUntestable() error {
 	if err := w.useFlawedPlan(); err != nil {
 		return err
 	}
-	w.validator = spyDouble
+	if err := w.setHarness("validator", spyDouble); err != nil {
+		return err
+	}
 	if err := w.run(false); err != nil {
 		return err
 	}
