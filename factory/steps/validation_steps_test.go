@@ -27,7 +27,7 @@ func (w *world) registerValidationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the plan has no new task$`, w.planHasNoNewTask)
 }
 
-// useFlawedPlan commits the plan of flawed tasks in the target. With no plan
+// useFlawedPlan commits the plan of flawed tasks in the run's folder. With no plan
 // the line would first have the planner plan the whole seed, and the run
 // would build all of it; the flawed task keeps the run to one task. It does
 // nothing if that plan is already there.
@@ -36,18 +36,8 @@ func (w *world) useFlawedPlan() error {
 		return nil
 	}
 	w.planTasks = flawedTasks
-	var plan strings.Builder
-	plan.WriteString("# Plan\n\n")
-	for _, task := range flawedTasks {
-		fmt.Fprintf(&plan, "- [ ] %s\n", task)
-	}
-	if err := os.MkdirAll(filepath.Dir(w.planPath()), 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(w.planPath(), []byte(plan.String()), 0o644); err != nil {
-		return err
-	}
-	return commitAll(w.repo, "A plan", w.target)
+	w.current().tasks = flawedTasks
+	return w.writePlanFor(w.current(), flawedTasks, 0)
 }
 
 // firstAttemptIsUntestable has a real doer make an untestable first attempt

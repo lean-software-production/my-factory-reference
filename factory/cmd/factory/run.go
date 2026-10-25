@@ -11,6 +11,49 @@ import (
 // is JSON.
 type result map[string]any
 
+// execute starts or resumes the run the invocation names. The line is read,
+// and refused if it cannot be run, and each machine is checked, before any
+// work is done or anything is written.
+func (i invocation) execute() error {
+	folder, err := i.openRun()
+	if err != nil {
+		return err
+	}
+	line, err := loadAssemblyLine(folder.lineDir())
+	if err != nil {
+		return err
+	}
+	machines, err := loadMachines(line)
+	if err != nil {
+		return err
+	}
+	// A machine that cannot sign in is reported before any machine is called.
+	for _, name := range line.machinesOn() {
+		if err := machines[name].checkSignIn(); err != nil {
+			return err
+		}
+	}
+	if err := prepareTarget(folder.target); err != nil {
+		return err
+	}
+	if !folder.started {
+		if err := folder.save(); err != nil {
+			return err
+		}
+		if err := commitRunFolder(folder, "Start the "+folder.name+" run"); err != nil {
+			return err
+		}
+	}
+
+	r := &run{line, machines, i.attempts, folder}
+	err = r.along()
+	// However it ends, nothing the run made is left uncommitted.
+	if commitErr := commitRunFolder(folder, "Keep what the "+folder.name+" run made"); err == nil {
+		err = commitErr
+	}
+	return err
+}
+
 // A run is the factory going along the assembly line from start, calling
 // each machine it comes to and taking the edge its result names, until the
 // line reaches finish.
@@ -18,9 +61,7 @@ type run struct {
 	line     *assemblyLine
 	machines map[string]machine
 	attempts int // the most times a task may send the line back to a machine
-	seed     string
-	target   string
-	plan     string
+	folder   runFolder
 }
 
 // A task is finished when the line comes back to the planner with the work
@@ -29,6 +70,7 @@ func (r *run) along() error {
 	const defaultMessage = "Do the next task"
 	var (
 		planner = r.line.planner()
+		target  = r.folder.target
 		node    = start
 		res     = result{}
 		said    string // the latest result as the machine said it
@@ -47,7 +89,7 @@ func (r *run) along() error {
 
 		if next == planner {
 			if node != start {
-				if err := commitTarget(r.target, message); err != nil {
+				if err := commitWork(target, message); err != nil {
 					return err
 				}
 			}
@@ -56,18 +98,18 @@ func (r *run) along() error {
 			return fmt.Errorf("a task hit its limit of %d attempts: the assembly line sent it to the %s again without getting it done", r.attempts, next)
 		}
 
-		changes, err := git(r.target, "status", "--short", "-uall", "--", ".")
+		changes, err := git(target, "status", "--short", "-uall", "--", ".", excludeLines)
 		if err != nil {
 			return err
 		}
-		planned := fileExists(r.plan)
+		planned := fileExists(r.folder.plan())
 		before := node
 		if node == start {
 			before = ""
 		}
-		prompt := briefing{r.seed, r.plan, planned, before, said, changes,
+		prompt := briefing{r.folder.seedPath(), r.folder.plan(), r.folder.dir, planned, before, said, changes,
 			resultFields(r.line.routedFields(next), r.line.isWorker(next), r.line.canSendWorkBack(next))}
-		if said, res, err = ask(r.machines[next], r.target, prompt.String()); err != nil {
+		if said, res, err = ask(r.machines[next], target, prompt.String()); err != nil {
 			return err
 		}
 		if next == planner {
@@ -75,7 +117,7 @@ func (r *run) along() error {
 			if !planned {
 				commit = "Write the plan"
 			}
-			if err := commitTarget(r.target, commit); err != nil {
+			if err := commitRunFolder(r.folder, commit); err != nil {
 				return err
 			}
 		} else if task, ok := res["task"].(string); ok && task != "" && message == defaultMessage && r.line.isWorker(next) {

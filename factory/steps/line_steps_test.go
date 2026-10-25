@@ -10,15 +10,25 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// The assembly line is assembly-line.dot in the line's folder. Examples
-// change it by editing its text.
+// The assembly line is assembly-line.dot in the line's folder, in the
+// target. Examples change it by editing its text.
 
 func (w *world) registerLineSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^this assembly line:$`, func(line *godog.DocString) error {
-		return w.writeLine(line.Content + "\n")
+		// The target gets the line, with the machines the student wrote,
+		// and a run that executes it.
+		if len(w.runs) == 0 {
+			if err := w.addLine("careful", "careful"); err != nil {
+				return err
+			}
+			if err := w.nameRun("tetris", "careful"); err != nil {
+				return err
+			}
+		}
+		return w.writeLine(w.currentLineDir(), line.Content+"\n")
 	})
-	sc.Step(`^the validator has been taken out, so the doer goes straight to the planner$`, func() error {
-		return w.editLine(func(line string) string {
+	sc.Step(`^the validator has been taken out(?: of the "([^"]*)" line)?, so the doer goes straight to the planner$`, func(line string) error {
+		return w.editLine(line, func(line string) string {
 			var kept []string
 			for _, l := range strings.Split(strings.TrimRight(line, "\n"), "\n") {
 				if !strings.Contains(l, "validator") {
@@ -31,15 +41,15 @@ func (w *world) registerLineSteps(sc *godog.ScenarioContext) {
 			return strings.Join(kept, "\n") + "\n"
 		})
 	})
-	sc.Step(`^"([^"]*)" is misspelt "([^"]*)" throughout the assembly line$`, func(right, wrong string) error {
-		return w.editLine(func(line string) string { return strings.ReplaceAll(line, right, wrong) })
+	sc.Step(`^"([^"]*)" is misspelt "([^"]*)" throughout (?:the assembly line|the "([^"]*)" line)$`, func(right, wrong, line string) error {
+		return w.editLine(line, func(graph string) string { return strings.ReplaceAll(graph, right, wrong) })
 	})
 	sc.Step(`^the edge from validator to planner has been taken out$`, func() error {
 		edge := regexp.MustCompile(`(?m)^\s*validator\s*->\s*planner\b.*\n`)
-		return w.editLine(func(line string) string { return edge.ReplaceAllString(line, "") })
+		return w.editLine("", func(line string) string { return edge.ReplaceAllString(line, "") })
 	})
 	sc.Step(`^the edges from validator are labelled "([^"]*)" and "([^"]*)"$`, func(yes, no string) error {
-		return w.editLine(func(line string) string {
+		return w.editLine("", func(line string) string {
 			var out []string
 			for _, l := range strings.Split(line, "\n") {
 				if strings.HasPrefix(strings.TrimSpace(l), "validator") {
@@ -74,28 +84,29 @@ func (w *world) registerLineSteps(sc *godog.ScenarioContext) {
 	})
 }
 
-func (w *world) lineFile() string { return filepath.Join(w.lineDir, "assembly-line.dot") }
+func lineFile(lineDir string) string { return filepath.Join(lineDir, "assembly-line.dot") }
 
-func (w *world) writeLine(text string) error {
-	return os.WriteFile(w.lineFile(), []byte(text), 0o644)
+func (w *world) writeLine(lineDir, text string) error {
+	return os.WriteFile(lineFile(lineDir), []byte(text), 0o644)
 }
 
-func (w *world) editLine(change func(string) string) error {
-	raw, err := os.ReadFile(w.lineFile())
+// editLine changes the text of the named line's graph in the current target,
+// or of the current run's line if none is named.
+func (w *world) editLine(name string, change func(string) string) error {
+	lineDir := w.currentLineDir()
+	if name != "" {
+		lineDir = w.lineDirIn(w.target, name)
+	}
+	raw, err := os.ReadFile(lineFile(lineDir))
 	if err != nil {
 		return err
 	}
-	return w.writeLine(change(string(raw)))
+	return w.writeLine(lineDir, change(string(raw)))
 }
 
-// readsTheLine has the factory read the assembly line by running it on a
-// seed, with machines that do nothing: it reads the line before it does
+// readsTheLine has the factory read the assembly line by running the run
+// that executes it, with machines that do nothing: it reads the line before it does
 // any work, so a line it refuses ends the run before any machine is called.
 func (w *world) readsTheLine() error {
-	if w.seed == "" {
-		if err := w.writeSeed(tetrisSeed); err != nil {
-			return err
-		}
-	}
 	return w.run()
 }

@@ -153,11 +153,12 @@ func changedFiles(repo, commit, path string) ([]string, error) {
 	return changed, nil
 }
 
-// productFiles leaves out the plan's folder: what is left is the work.
+// productFiles leaves out the target's assembly lines, which hold its runs'
+// plans: what is left is the work.
 func productFiles(changed []string) []string {
 	var product []string
 	for _, file := range changed {
-		if !underAny(file, []string{".factory"}) {
+		if !underAny(file, []string{".assembly-lines"}) {
 			product = append(product, file)
 		}
 	}

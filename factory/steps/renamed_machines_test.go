@@ -18,8 +18,10 @@ func renamedWorld(t *testing.T) *world {
 	t.Cleanup(w.tearDown)
 	steps := []func() error{
 		w.setUp,
-		func() error { w.useTarget("games/new-game"); return nil },
+		func() error { return w.useTarget("games/new-game") },
 		func() error { return w.writeSeed(tetrisSeed) },
+		func() error { return w.addLine("careful", "careful") },
+		func() error { return w.nameRun("tetris", "careful") },
 		func() error { return w.writePlan(0) },
 		func() error {
 			for from, to := range map[string]string{"planner": "lead", "doer": "builder", "validator": "checker"} {
@@ -27,7 +29,7 @@ func renamedWorld(t *testing.T) *world {
 					return err
 				}
 			}
-			return w.editLine(func(line string) string {
+			return w.editLine("", func(line string) string {
 				for from, to := range map[string]string{"planner": "lead", "doer": "builder", "validator": "checker"} {
 					line = strings.ReplaceAll(line, from, to)
 				}
@@ -92,8 +94,7 @@ func TestRenamedMachinesStillLimitAttempts(t *testing.T) {
 	if calls, _ := w.callsTo("doer"); len(calls) != 3 {
 		t.Errorf("the builder was called %d times, not 3", len(calls))
 	}
-	head, err := git(w.repo, "rev-parse", "HEAD")
-	if err != nil || head != w.headBefore {
-		t.Errorf("a task that gave up was committed (%v)", err)
+	if err := w.workCommits(0); err != nil {
+		t.Errorf("a task that gave up was committed: %v", err)
 	}
 }

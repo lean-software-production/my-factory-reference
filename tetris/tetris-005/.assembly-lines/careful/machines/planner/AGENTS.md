@@ -20,6 +20,12 @@ are working in. Mark as done in the plan each task whose work is committed,
 unless it has a subtask that is not done: a task is not done until its
 subtasks are, so leave such a task as it is. Change nothing else.
 
+## The run's folder
+
+The factory tells you where the run's folder is, which holds the plan.
+Keep anything you make for the run, such as notes, artifacts and logs,
+there. The product goes in the folder you are working in, not there.
+
 ## Your result
 
 Finish your answer with your result, as the factory asks for it: one line

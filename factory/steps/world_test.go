@@ -37,35 +37,42 @@ const (
 	realRunLimit   = 55 * time.Minute
 )
 
+// runSpec is a run an example names: the line it executes, and the seed and
+// target it is given, as paths from the repository.
+type runSpec struct {
+	name, line, seed, target string
+	tasks                    []string // the tasks of the plan an example wrote for it, if it did
+}
+
 // world is one example's state. Each example has its own workspace: a
 // test repository holding a copy of the factory, and a folder for the
-// doubles.
+// doubles. The targets, with their assembly lines, are in the repository.
 type world struct {
 	ws        string // the example's temporary folder, removed when it ends
 	repo      string // the test repository, where the factory is run from
 	doubleDir string // where the doubles log their calls and keep state
-	lineDir   string // the factory's assembly line, in the example's copy of the factory
 
-	seed     string // as given on the command line, from repo
-	target   string // as given on the command line, from repo
-	noSeed   bool
-	noTarget bool
-	attempts int      // the most attempts a pass is allowed, if set
-	realPi   bool     // the machines run the real pi
-	env      []string // set in the factory's environment, as NAME=value
-	subject  string   // the machine the latest "was given" step was about
+	seed     string // the latest seed an example wrote, as a path from repo
+	target   string // the latest target an example made, as a path from repo
+	lineDirs []string
+	runs     []*runSpec // the runs an example named, in order; the last is the current one
+	ran      *runSpec   // the run the factory was last asked to run
+	noTarget bool       // the next invocation is given no target
+	attempts int        // the most attempts a task is allowed, if set
+	realPi   bool       // the machines run the real pi
+	env      []string   // set in the factory's environment, as NAME=value
+	subject  string     // the machine the latest "was given" step was about
 	does     behaviour
 
-	planTasks []string          // the tasks of a plan an example wrote
-	targets   map[string]string // every target this example named, by path from repo
+	planTasks []string        // the tasks of the plan an example wrote for the current run
+	targets   map[string]bool // every target this example made, by path from repo
 
-	// The latest run, and the state just before it.
+	// The latest invocation, and the state just before it.
 	output     string
 	exitErr    error
 	timedOut   bool
 	headBefore string
-	before     map[string]files // targets' files before the run
-	unrelated  *repoState       // the factory's files and unrelated changes, once set up
+	unrelated  *repoState // the factory's files and unrelated changes, once set up
 
 	// The latest game started in the target.
 	screen string
@@ -73,12 +80,9 @@ type world struct {
 }
 
 func newWorld() *world {
-	return &world{targets: map[string]string{}}
+	return &world{targets: map[string]bool{}}
 }
 
-func (w *world) planPath() string      { return filepath.Join(w.targetDir(), ".factory", "plan.md") }
-func (w *world) seedPath() string      { return w.fromRepo(w.seed) }
-func (w *world) targetDir() string     { return w.fromRepo(w.target) }
 func (w *world) factoryDir() string    { return filepath.Join(w.repo, "factory") }
 func (w *world) behaviourFile() string { return filepath.Join(w.doubleDir, "behaviour.json") }
 
@@ -89,8 +93,32 @@ func (w *world) fromRepo(path string) string {
 	return filepath.Join(w.repo, path)
 }
 
+// current is the run the latest "a run named" step named.
+func (w *world) current() *runSpec { return w.runs[len(w.runs)-1] }
+
+func (w *world) runNamed(name string) (*runSpec, error) {
+	for _, r := range w.runs {
+		if r.name == name {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("no run named %q has been given", name)
+}
+
+func (w *world) targetDir() string { return w.fromRepo(w.target) }
+func (w *world) seedPath() string  { return w.fromRepo(w.seed) }
+
+// The current run's seed, target and plan; the run's folder is
+// .assembly-lines/<line>/runs/<name>/ in its target.
+func (w *world) runDir(r *runSpec) string {
+	return filepath.Join(w.fromRepo(r.target), ".assembly-lines", r.line, "runs", r.name)
+}
+func (w *world) planOf(r *runSpec) string { return filepath.Join(w.runDir(r), "plan.md") }
+func (w *world) planPath() string         { return w.planOf(w.current()) }
+
 // setUp makes the workspace: a repository with a copy of the factory and
-// nothing else, committed.
+// nothing else, committed. The factory has no assembly lines of its own: they
+// are in the targets.
 func (w *world) setUp() error {
 	ws, err := os.MkdirTemp("", "factory-example-")
 	if err != nil {
@@ -113,9 +141,6 @@ func (w *world) setUp() error {
 	if err := os.Symlink("../factory/factory", filepath.Join(w.repo, "bin", "factory")); err != nil {
 		return err
 	}
-	if err := w.copyLine(); err != nil {
-		return err
-	}
 	if _, err := git(w.repo, "init", "-q"); err != nil {
 		return err
 	}
@@ -128,23 +153,36 @@ func (w *world) tearDown() {
 	}
 }
 
-// useTarget selects a target by its path from the repository.
-func (w *world) useTarget(path string) {
+// useTarget makes the target, a folder in the repository, the current one.
+func (w *world) useTarget(path string) error {
 	w.target = path
-	if !filepath.IsAbs(path) {
-		w.targets[path] = w.fromRepo(path)
-	}
+	w.targets[path] = true
+	return os.MkdirAll(w.fromRepo(path), 0o755)
 }
 
-// run runs the factory from the repository root, through bin/factory,
-// as a student would.
-func (w *world) run() error {
-	var args []string
-	if !w.noSeed {
-		args = append(args, "--seed", w.seed)
-	}
+// invocation is how the factory is asked to run a run.
+type invocation struct {
+	line          string // given instead of the run's own, if set
+	nameAndTarget bool   // given only the run's name and target
+}
+
+// run runs the current run, as the latest "a run named" step named it.
+func (w *world) run() error { return w.runRun(w.current(), invocation{}) }
+
+// runRun runs the factory from the repository root, through bin/factory,
+// as a student would, on the run.
+func (w *world) runRun(r *runSpec, how invocation) error {
+	w.ran = r
+	args := []string{"--run", r.name}
 	if !w.noTarget {
-		args = append(args, "--target", w.target)
+		args = append(args, "--target", r.target)
+	}
+	line := r.line
+	if how.line != "" {
+		line = how.line
+	}
+	if !how.nameAndTarget {
+		args = append(args, "--line", line, "--seed", r.seed)
 	}
 	if w.attempts > 0 {
 		args = append(args, "--attempts", strconv.Itoa(w.attempts))
@@ -159,12 +197,6 @@ func (w *world) run() error {
 	}
 	if w.headBefore, err = git(w.repo, "rev-parse", "HEAD"); err != nil {
 		return err
-	}
-	w.before = map[string]files{}
-	for path, dir := range w.targets {
-		if w.before[path], err = snapshot(dir); err != nil {
-			return err
-		}
 	}
 
 	limit := doubleRunLimit
@@ -200,7 +232,11 @@ func (w *world) run() error {
 
 // runToSuccess runs the factory, and fails unless it succeeds.
 func (w *world) runToSuccess() error {
-	if err := w.run(); err != nil {
+	return w.runRunToSuccess(w.current(), invocation{})
+}
+
+func (w *world) runRunToSuccess(r *runSpec, how invocation) error {
+	if err := w.runRun(r, how); err != nil {
 		return err
 	}
 	if w.exitErr != nil || w.timedOut {

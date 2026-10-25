@@ -9,8 +9,8 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// The seed the examples build from, unless one says otherwise. It is the
-// course's practice seed.
+// The seeds the examples build from, unless one says otherwise. The first is
+// the course's practice seed.
 const tetrisSeed = `# Tetris
 
 Build a game of Tetris that runs in the terminal.
@@ -24,6 +24,15 @@ Keep the complete game display within 24 terminal rows, including the board, sco
 You may install packages if they help you render or control the terminal display.
 `
 
+const snakeSeed = `# Snake
+
+Build a game of Snake that runs in the terminal.
+
+Start it with:
+
+    npm start
+`
+
 // What the validator finds wrong, when it is not satisfied.
 const finding = "no test covers the new behaviour"
 
@@ -32,8 +41,26 @@ var threeTasks = []string{"one", "two", "three"}
 
 func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a copy of the factory$`, w.setUp)
-	sc.Step(`^a new target$`, func() { w.useTarget("games/new-game") })
-	sc.Step(`^a seed describing a game of Tetris$`, func() error { return w.writeSeed(tetrisSeed) })
+	sc.Step(`^a new target, with a seed describing a game of Tetris$`, func() error {
+		if err := w.useTarget("games/new-game"); err != nil {
+			return err
+		}
+		return w.writeSeed(tetrisSeed)
+	})
+	sc.Step(`^a new target, with a seed describing a game of Snake$`, func() error {
+		if err := w.useTarget("games/snake-game"); err != nil {
+			return err
+		}
+		return w.writeSeedAt(filepath.Join("snake", "spec.md"), snakeSeed)
+	})
+	sc.Step(`^the target has an assembly line "([^"]*)" on which the doer's work is validated$`, func(name string) error {
+		return w.addLine("careful", name)
+	})
+	sc.Step(`^the target has an assembly line "([^"]*)" on which the doer goes straight to the planner$`, func(name string) error {
+		return w.addLine("quick", name)
+	})
+	sc.Step(`^the "([^"]*)" line has been copied into the target$`, func(name string) error { return w.addLine(name, name) })
+	sc.Step(`^a run named "([^"]*)", on the "([^"]*)" line, with that seed and target$`, w.nameRun)
 
 	sc.Step(`^the planner plans the tasks alpha and beta$`, func() { w.does.Tasks = []string{"alpha", "beta"} })
 	sc.Step(`^the doer does the next task in the plan$`, func() {}) // what the double does unless told otherwise
@@ -57,24 +84,10 @@ func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 
 	sc.Step(`^the doer cannot be run$`, func() error { return w.setHarness("doer", filepath.Join(w.ws, "no-such-harness")) })
 
-	sc.Step(`^no seed is chosen$`, func() { w.noSeed = true })
 	sc.Step(`^the seed has been deleted$`, func() error { return os.Remove(w.seedPath()) })
 	sc.Step(`^no target is chosen$`, func() { w.noTarget = true })
 
-	sc.Step(`^the target folder does not exist$`, func() error {
-		if _, err := os.Stat(w.targetDir()); !os.IsNotExist(err) {
-			return fmt.Errorf("the target %s exists", w.targetDir())
-		}
-		return nil
-	})
-	sc.Step(`^the target is outside any Git repository$`, func() error {
-		w.useTarget(filepath.Join("..", "outside", "game"))
-		delete(w.targets, w.target)
-		if _, err := git(w.ws, "rev-parse", "--git-dir"); err == nil {
-			return fmt.Errorf("the workspace %s is inside a Git repository", w.ws)
-		}
-		return nil
-	})
+	sc.Step(`^the target is outside any Git repository$`, w.moveTargetOutside)
 	sc.Step(`^the factory has staged and unstaged changes$`, w.makeUnrelatedChanges)
 
 	sc.Step(`^no plan$`, func() error {
@@ -86,11 +99,52 @@ func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a plan with three tasks, none of them done$`, func() error { return w.writePlan(0) })
 	sc.Step(`^a plan whose first task is done$`, func() error { return w.writePlan(1) })
 	sc.Step(`^a plan in which every task is done$`, func() error { return w.writePlan(len(threeTasks)) })
+	sc.Step(`^a plan for each run with three tasks of its own, none of them done$`, w.writePlanForEachRun)
+}
+
+// nameRun names a run on a line of the target, given the latest seed.
+func (w *world) nameRun(name, line string) error {
+	if _, err := os.Stat(w.lineDirIn(w.target, line)); err != nil {
+		return fmt.Errorf("the target %s has no line called %q: %v", w.target, line, err)
+	}
+	w.runs = append(w.runs, &runSpec{name: name, line: line, seed: w.seed, target: w.target})
+	return nil
+}
+
+// moveTargetOutside moves the target, lines and all, out of the repository,
+// to a folder no Git repository contains.
+func (w *world) moveTargetOutside() error {
+	if _, err := git(w.ws, "rev-parse", "--git-dir"); err == nil {
+		return fmt.Errorf("the workspace %s is inside a Git repository", w.ws)
+	}
+	was, now := w.target, filepath.Join("..", "outside", "game")
+	if err := os.MkdirAll(filepath.Dir(w.fromRepo(now)), 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(w.fromRepo(was), w.fromRepo(now)); err != nil {
+		return err
+	}
+	delete(w.targets, was)
+	w.target = now
+	for _, r := range w.runs {
+		if r.target == was {
+			r.target = now
+		}
+	}
+	for i, dir := range w.lineDirs {
+		w.lineDirs[i] = strings.Replace(dir, w.fromRepo(was), w.fromRepo(now), 1)
+	}
+	return nil
 }
 
 // writeSeed puts the seed at tetris/spec.md in the repository, committed.
 func (w *world) writeSeed(text string) error {
-	w.seed = filepath.Join("tetris", "spec.md")
+	return w.writeSeedAt(filepath.Join("tetris", "spec.md"), text)
+}
+
+// writeSeedAt puts the seed at the path from the repository, committed.
+func (w *world) writeSeedAt(path, text string) error {
+	w.seed = path
 	if err := os.MkdirAll(filepath.Dir(w.seedPath()), 0o755); err != nil {
 		return err
 	}
@@ -100,26 +154,48 @@ func (w *world) writeSeed(text string) error {
 	return commitAll(w.repo, "The seed", w.seed)
 }
 
-// writePlan commits a plan of three tasks in the target, the first done of
-// them marked done, as the agent double keeps it.
+// writePlan commits a plan of three tasks in the current run's folder, the
+// first done of them marked done, as the agent double keeps it.
 func (w *world) writePlan(done int) error {
 	w.planTasks = threeTasks
+	w.current().tasks = threeTasks
+	return w.writePlanFor(w.current(), threeTasks, done)
+}
+
+// writePlanFor commits a plan of the tasks in the run's folder, in the
+// target, the first done of them marked done.
+func (w *world) writePlanFor(r *runSpec, tasks []string, done int) error {
 	var plan strings.Builder
 	plan.WriteString("# Plan\n\n")
-	for i, task := range threeTasks {
+	for i, task := range tasks {
 		mark := " "
 		if i < done {
 			mark = "x"
 		}
 		fmt.Fprintf(&plan, "- [%s] %s\n", mark, task)
 	}
-	if err := os.MkdirAll(filepath.Dir(w.planPath()), 0o755); err != nil {
+	if err := os.MkdirAll(w.runDir(r), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(w.planPath(), []byte(plan.String()), 0o644); err != nil {
+	if err := os.WriteFile(w.planOf(r), []byte(plan.String()), 0o644); err != nil {
 		return err
 	}
-	return commitAll(w.repo, "A plan", w.target)
+	return commitAll(w.repo, "A plan", w.runDir(r))
+}
+
+// writePlanForEachRun gives every run a plan of three tasks of its own,
+// named for the run, so that the work of one is not mistaken for another's.
+func (w *world) writePlanForEachRun() error {
+	for _, r := range w.runs {
+		r.tasks = nil
+		for _, task := range threeTasks {
+			r.tasks = append(r.tasks, r.name+"-"+task)
+		}
+		if err := w.writePlanFor(r, r.tasks, 0); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // makeUnrelatedChanges leaves the repository with a staged change, an
@@ -150,6 +226,6 @@ func (w *world) makeUnrelatedChanges() error {
 		return err
 	}
 	var err error
-	w.unrelated, err = stateOutside(w.repo, nil)
+	w.unrelated, err = stateOutside(w.repo, w.targetPaths())
 	return err
 }

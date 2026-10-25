@@ -16,7 +16,7 @@ func TestInstructionsKeepATaskOpenUntilItsSubtasksAreDone(t *testing.T) {
 		"doer: task waits":          {"doer", "not done until every one of its subtasks is"},
 		"planner leaves open tasks": {"planner", "unless it has a subtask that is not done"},
 	} {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "assembly-lines", "careful", "machines", tc.machine, "AGENTS.md"))
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tetris", "tetris-005", ".assembly-lines", "careful", "machines", tc.machine, "AGENTS.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,12 +48,12 @@ func TestPromptsHoldNoInstructionsOfTheMachines(t *testing.T) {
 // is uncommitted. Only the result it is asked for differs.
 func TestEveryMachineIsGivenTheSameContext(t *testing.T) {
 	b := briefing{
-		seed: "/s/seed.md", plan: "/t/.factory/plan.md", planExists: true,
+		seed: "/s/seed.md", plan: "/t/runs/r/plan.md", runDir: "/t/runs/r", planExists: true,
 		before: "security", answer: `{"approved": false, "findings": ["no test"]}`, changes: "?? one.txt",
 		fields: resultFields([]string{"approved"}, false, true),
 	}
 	prompt := b.String()
-	for _, want := range []string{"/s/seed.md", "/t/.factory/plan.md", "the security", `"findings": ["no test"]`, "?? one.txt", `"approved"`} {
+	for _, want := range []string{"/s/seed.md", "/t/runs/r/plan.md", "The run's folder, where you keep anything you make for the run, is /t/runs/r\n", "the security", `"findings": ["no test"]`, "?? one.txt", `"approved"`} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("the prompt lacks %q:\n%s", want, prompt)
 		}

@@ -16,6 +16,12 @@ the task you are doing, and don't add it to the plan as a new task. Mark a
 subtask as done once you have put its finding right. The task itself is
 not done until every one of its subtasks is.
 
+## The run's folder
+
+The factory tells you where the run's folder is, which holds the plan.
+Keep anything you make for the run, such as notes, artifacts and logs,
+there. The product goes in the folder you are working in, not there.
+
 ## Your result
 
 Finish your answer with your result, as the factory asks for it: one line

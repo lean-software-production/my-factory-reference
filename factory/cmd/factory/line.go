@@ -14,7 +14,8 @@ import (
 // The assembly line is the route through the factory's machines: a Graphviz
 // graph the factory reads before it does any work. start and finish mark
 // where it begins and ends; every other node names a machine on the line,
-// which has a folder of its own, machines/<name>/ beside the graph.
+// which has a folder of its own, machines/<name>/ beside the graph. A line is
+// a folder of its own in the target's .assembly-lines/, named for the line.
 //
 // An edge only routes. Its label names a field of the result of the machine
 // it leaves: the edge is taken when that field is true, and one labelled
@@ -87,51 +88,6 @@ func (l *assemblyLine) machinesOn() []string {
 
 func (l *assemblyLine) machineDir(name string) string {
 	return filepath.Join(l.dir, "machines", name)
-}
-
-// linesFolder finds assembly-lines/ in the factory's folder: next to the
-// factory's binary, or in the folder above it (the launcher builds the
-// binary into .build/). It is found from the binary, not from where the
-// factory is run.
-func linesFolder() (string, error) {
-	exe, err := os.Executable()
-	if err == nil {
-		exe, err = filepath.EvalSymlinks(exe)
-	}
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Dir(exe)
-	candidates := []string{filepath.Join(dir, "assembly-lines"), filepath.Join(filepath.Dir(dir), "assembly-lines")}
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("there is no assembly-lines folder: looked in %s", strings.Join(candidates, " and "))
-}
-
-// readAssemblyLine reads the factory's one assembly line from the folder
-// assembly-lines/ holds, and refuses it unless the factory can run it.
-func readAssemblyLine() (*assemblyLine, error) {
-	root, err := linesFolder()
-	if err != nil {
-		return nil, err
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil, err
-	}
-	var folders []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			folders = append(folders, entry.Name())
-		}
-	}
-	if len(folders) != 1 {
-		return nil, fmt.Errorf("the factory has one assembly line, but %s holds %d folders", root, len(folders))
-	}
-	return loadAssemblyLine(filepath.Join(root, folders[0]))
 }
 
 func loadAssemblyLine(dir string) (*assemblyLine, error) {

@@ -405,3 +405,119 @@ machine it plays from the `# Planner`/`# Doer`/`# Validator` heading of the
 AGENTS.md it is given, as a real agent would, not from its folder's name.
 Default suite 49/49 plus the new tests; real-agent suite 8 of 8 again, 19:42
 to 20:14 (**31m 48s**).
+
+## Homework 005: Runs and targets
+
+- **Adopted:** iteration `005-runs-and-targets` from the tutorial's `main`,
+  at 20:16.
+- **Red:** with the adopted spec and homework 4's factory, 55 examples ran
+  (the 8 `@real-agent` ones left out): all 55 were undefined (630 steps:
+  55 passed, 246 undefined, 329 skipped). Every example's Background changed
+  (a target that holds a line, and a named run on it), and every "the
+  factory runs" became "the factory runs the "tetris" run". The failures were
+  all in what the README calls new. No step-drift problem in the tutorial and
+  no regression.
+- **What changed in the factory:**
+  - The lines moved into the target: `tetris/tetris-005/.assembly-lines/`
+    holds `careful` (homework 4's folder, moved with `mv` so its machines'
+    logins came along, and with a line added to each `AGENTS.md` about the
+    run's folder) and a new `quick` line, the same without the validator.
+    The factory no longer has `assembly-lines/` and no longer looks beside
+    its binary for anything.
+  - A run is `--run <name> --target <folder>`, and the first time also
+    `--line <line> --seed <file>`. Its folder is
+    `<target>/.assembly-lines/<line>/runs/<name>/`, holding `plan.md` and a
+    `run.json` that remembers the line and the seed (the seed as a path from
+    the target, so a clone elsewhere finds it). After that the name and the
+    target are enough. A run is found by looking through the target's lines
+    for its name, so a name is unique in the target; naming it with another
+    line or seed is refused ("the "tetris" run already has a line").
+    `--attempts` stays a flag of the invocation, not a setting of the run.
+  - The target is always named. A missing target, or a run that hasn't been
+    started and isn't given a line and a seed, is reported before anything
+    is read or written.
+  - The run's folder is committed apart from the work: when the run starts
+    ("Start the tetris run"), after each planner call, and once more at the end
+    of an invocation however it ends. The work commit leaves out
+    `.assembly-lines/`, and so does the list of uncommitted changes machines
+    are given. The plan is no longer committed with the work, and no longer
+    in `.factory/`.
+  - Machines are told where the run's folder is, as one more line of the
+    same briefing every machine gets.
+- **Doubles:** the agent double finds the plan from the prompt ("The plan is
+  ..."), and keeps a note of each call in the run's folder, as a machine told
+  to keep what it makes there would. That is what gives "the run's folder has
+  no uncommitted changes" something to check when a task gives up. The spy
+  now watches the work and the plan, not the rest of the run's folder.
+- **Steps:** a world keeps the runs an example names and the targets it
+  makes. The lines in a target are copies of `tetris/tetris-005`'s (only what
+  Git keeps, with the double as every machine's harness and a stand-in
+  login). "The run has been started" runs the factory for real, then forgets
+  the machines' calls so that the example asks about what happens next.
+  "The target is outside any Git repository" moves the target, lines and
+  all, out of the test repository.
+- **Green:** 55 of 55 examples and 630 steps pass in about 50s.
+- **Mutation checks:** each of these made examples fail: committing the
+  work with `.assembly-lines/` (1 example, "Three tasks"); no commit of the
+  run's folder at the end of an invocation (1, "A task that gives up"); letting
+  a run's line be changed (1); always taking the `careful` line whatever the
+  run's (2, "Two lines, one target" and "Two lines, two doers"); leaving the run's
+  folder out of the briefing (nearly every example, because the agent double then can't keep its
+  note). Two mutations changed nothing in the suite: not committing the plan
+  after each planner call (the final commit covers it) and finding a started
+  run on one line only (a started run is only resumed on `careful` in the
+  examples). The second is covered by a unit test.
+- **Unit tests the doubles can't replace:** `runs_test.go` (a run is found on
+  whichever line it is on, its seed is kept as a path from the target, a name
+  is unique in its target, a run needs a target and a name).
+  `TestRelativePathsResolveFromCallerCwd` now builds the line in the caller's
+  target, with nothing beside the binary, and checks the run's folder is
+  there.
+- **Time:** about 20 minutes from the fetch to a green suite (20:16 to about
+  20:36), most of it rewriting the world of the steps; the mutation checks
+  and the README commands took another 20.
+- **README commands:** `bin/factory --run tetris --target tetris/tetris-005
+  --line careful --seed tetris/spec.md` runs a real agent, so through
+  `bin/factory` I checked only the launcher and the checks before any machine
+  runs: a missing target, run, seed, line or line the target lacks is
+  reported. With the agent double as every machine's harness, in a copy of
+  the target in a scratch repository, I ran the README's commands: the
+  `tetris` run on `careful` (planner, doer and validator, with the run's
+  folder committed apart from the work), the same run again by name, the same
+  run given `--line quick` (refused), and `snake` on a copy of `quick` without
+  its runs, in a second target. The "Once your suite passes" section and the
+  bonus round were skipped.
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 60m`,
+with the pi wrapper first on the `PATH`: 20:37 to 21:08 (**30m 29s**),
+**7 of 8 pass**:
+
+- "Instructions above the target are not the machine's": 4m 07s;
+  "A Tetris with different details": 3m 51s; "The work is given a seed and
+  nothing else": 4m 20s; "The plan comes from the seed": 4m 22s; "A validator
+  that looks at testability": 3m 12s; "...at something else": 3m 05s; "The
+  first task's work is untestable": 2m 58s.
+- "A finding on the first task" failed: the validator found nothing wrong,
+  because it never saw the flawed task. The example commits a plan of that one
+  task, and this time the planner rewrote the plan as the whole of the seed
+  (three tasks) on its first call, so the run built a clean Tetris. The factory
+  was fine. Run again by itself, the example passes (3m 23s), and so did the
+  same set-up by hand in a scratch repository (the planner kept the plan, the
+  validator found the missing tests, the doer put them right). It is the
+  planner being free to do that: its `AGENTS.md` says what to do with no plan
+  and after the doer's work is committed, but nothing for a plan that exists
+  with nothing committed yet. I left the prompt alone for the review to decide.
+  The logs are in `.superpowers/sdd/2026-10-25-my-factory-reference/logs/`
+  (`005-real-agent.log`, `005-real-finding-rerun.log`).
+- Tokens weren't summed: the sessions are in the examples' temporary folders.
+
+### Problems found
+
+None in the tutorial or the starter. One thing to note:
+
+- The README's `quick` line is "the same line without the validator", and its
+  layout shows `planner` and `doer` only under `quick/machines/`. Its
+  doer's `AGENTS.md` loses the section about the validator's findings; that is
+  my reading of "configured differently".

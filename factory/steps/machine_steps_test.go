@@ -11,8 +11,8 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// Each machine has a folder of its own in the factory's folder. An
-// example's copy of the factory holds the machines' real folders (their
+// Each machine has a folder of its own on its line, in the target. An
+// example's targets hold copies of the machines' real folders (their
 // AGENTS.md, machine.json and .gitignore) with a harness chosen for each
 // machine and a login of its own that is a stand-in for yours.
 
@@ -21,6 +21,9 @@ func (w *world) registerMachineSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^no harness is chosen for the validator$`, func() error { return w.setHarness("validator", "") })
 
 	sc.Step(`^the (planner|doer|validator)'s AGENTS\.md says "([^"]*)"$`, w.saysInAGENTSmd)
+	sc.Step(`^on the "([^"]*)" line, the (planner|doer|validator)'s AGENTS\.md says "([^"]*)"$`, func(line, role, words string) error {
+		return w.saysInAGENTSmdOn(w.lineDirIn(w.target, line), role, words)
+	})
 	sc.Step(`^the folder above the target has an AGENTS\.md saying "([^"]*)"$`, func(words string) error {
 		folder := filepath.Dir(w.targetDir())
 		if err := os.MkdirAll(folder, 0o755); err != nil {
@@ -86,48 +89,74 @@ func (w *world) registerMachineSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^it reports that the doer cannot sign in$`, func() error { return w.reports("the doer cannot sign in") })
 }
 
-// The factory's one assembly line is a folder in assembly-lines/, holding
-// its graph and, in machines/, the machines on it.
-func (w *world) linesDir() string { return filepath.Join(w.factoryDir(), "assembly-lines") }
+// An assembly line is a folder in the target's .assembly-lines/, holding its
+// graph and, in machines/, the machines on it. Unless a step names a line,
+// it is about the current run's.
+func (w *world) lineDirIn(target, line string) string {
+	return filepath.Join(w.fromRepo(target), ".assembly-lines", line)
+}
 
-func (w *world) machineDir(role string) string { return filepath.Join(w.lineDir, "machines", role) }
+func (w *world) currentLineDir() string {
+	return w.lineDirIn(w.current().target, w.current().line)
+}
+
+func (w *world) machineDirOn(lineDir, role string) string {
+	return filepath.Join(lineDir, "machines", role)
+}
+
+func (w *world) machineDir(role string) string { return w.machineDirOn(w.currentLineDir(), role) }
 
 func (w *world) loginPath(role string) string { return filepath.Join(w.machineDir(role), "auth.json") }
 
-var machineRoles = []string{"planner", "doer", "validator"}
+// machinesOn lists the machines on the line.
+func machinesOn(lineDir string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(lineDir, "machines"))
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	return names, err
+}
 
-// copyLine puts the real assembly line in the example's copy of the
-// factory, its machines' folders included: only the files Git would keep,
-// never a login. It chooses the double as every machine's harness, and
-// gives each machine a login.
-func (w *world) copyLine() error {
-	real, err := filepath.Abs(filepath.Join("..", "assembly-lines"))
+// The lines the student wrote are in the first target they built, as the
+// README lays it out. Each example's targets get copies of them.
+const sourceLines = "../../tetris/tetris-005/.assembly-lines"
+
+// addLine puts a copy of the student's line in the current target, under
+// the name: only the files Git would keep, never a login. It chooses the
+// double as every machine's harness, and gives each machine a login.
+func (w *world) addLine(source, name string) error {
+	from, err := filepath.Abs(filepath.Join(sourceLines, source))
 	if err != nil {
 		return err
 	}
-	listed, err := git(filepath.Dir(real), "ls-files", "--cached", "--others", "--exclude-standard", "--", "assembly-lines")
+	listed, err := git(from, "ls-files", "--cached", "--others", "--exclude-standard", "--", ".")
 	if err != nil {
 		return err
 	}
-	for _, name := range strings.Split(listed, "\n") {
-		to := filepath.Join(w.factoryDir(), name)
+	if listed == "" {
+		return fmt.Errorf("the line %s has no files", from)
+	}
+	lineDir := w.lineDirIn(w.target, name)
+	for _, file := range strings.Split(listed, "\n") {
+		to := filepath.Join(lineDir, file)
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 			return err
 		}
-		if err := copyFile(filepath.Join(filepath.Dir(real), name), to, 0o644); err != nil {
+		if err := copyFile(filepath.Join(from, file), to, 0o644); err != nil {
 			return err
 		}
 	}
-	lines, err := os.ReadDir(w.linesDir())
-	if err != nil || len(lines) != 1 {
-		return fmt.Errorf("expected the factory to have one assembly line in %s (%v)", w.linesDir(), err)
+	w.lineDirs = append(w.lineDirs, lineDir)
+	roles, err := machinesOn(lineDir)
+	if err != nil {
+		return err
 	}
-	w.lineDir = filepath.Join(w.linesDir(), lines[0].Name())
-	for _, role := range machineRoles {
-		if err := w.setHarness(role, agentDouble); err != nil {
+	for _, role := range roles {
+		if err := w.setHarnessOn(lineDir, role, agentDouble); err != nil {
 			return err
 		}
-		if err := w.giveLogin(role); err != nil {
+		if err := w.giveLoginOn(lineDir, role); err != nil {
 			return err
 		}
 	}
@@ -135,8 +164,8 @@ func (w *world) copyLine() error {
 }
 
 // config is a machine's machine.json.
-func (w *world) config(role string) (map[string]any, error) {
-	raw, err := os.ReadFile(filepath.Join(w.machineDir(role), "machine.json"))
+func (w *world) config(lineDir, role string) (map[string]any, error) {
+	raw, err := os.ReadFile(filepath.Join(w.machineDirOn(lineDir, role), "machine.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +173,8 @@ func (w *world) config(role string) (map[string]any, error) {
 	return config, json.Unmarshal(raw, &config)
 }
 
-func (w *world) changeConfig(role string, change func(map[string]any)) error {
-	config, err := w.config(role)
+func (w *world) changeConfig(lineDir, role string, change func(map[string]any)) error {
+	config, err := w.config(lineDir, role)
 	if err != nil {
 		return err
 	}
@@ -154,12 +183,17 @@ func (w *world) changeConfig(role string, change func(map[string]any)) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(w.machineDir(role), "machine.json"), append(raw, '\n'), 0o644)
+	return os.WriteFile(filepath.Join(w.machineDirOn(lineDir, role), "machine.json"), append(raw, '\n'), 0o644)
 }
 
-// setHarness names the machine's harness in its machine.json; "" names none.
+// setHarness names the current run's machine's harness in its machine.json;
+// "" names none.
 func (w *world) setHarness(role, harness string) error {
-	return w.changeConfig(role, func(config map[string]any) {
+	return w.setHarnessOn(w.currentLineDir(), role, harness)
+}
+
+func (w *world) setHarnessOn(lineDir, role, harness string) error {
+	return w.changeConfig(lineDir, role, func(config map[string]any) {
 		if harness == "" {
 			delete(config, "harness")
 		} else {
@@ -169,13 +203,15 @@ func (w *world) setHarness(role, harness string) error {
 }
 
 func (w *world) setModel(role, model string) error {
-	return w.changeConfig(role, func(config map[string]any) { config["model"] = model })
+	return w.changeConfig(w.currentLineDir(), role, func(config map[string]any) { config["model"] = model })
 }
 
-// giveLogin writes a stand-in for your login in the machine's folder, with
+func (w *world) giveLogin(role string) error { return w.giveLoginOn(w.currentLineDir(), role) }
+
+// giveLoginOn writes a stand-in for your login in the machine's folder, with
 // an entry for the machine's provider that says whose copy it is.
-func (w *world) giveLogin(role string) error {
-	config, err := w.config(role)
+func (w *world) giveLoginOn(lineDir, role string) error {
+	config, err := w.config(lineDir, role)
 	if err != nil {
 		return err
 	}
@@ -184,13 +220,17 @@ func (w *world) giveLogin(role string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(w.loginPath(role), login, 0o600)
+	return os.WriteFile(filepath.Join(w.machineDirOn(lineDir, role), "auth.json"), login, 0o600)
 }
 
 // saysInAGENTSmd adds the words to the machine's AGENTS.md, after what it
 // says already.
 func (w *world) saysInAGENTSmd(role, words string) error {
-	path := filepath.Join(w.machineDir(role), "AGENTS.md")
+	return w.saysInAGENTSmdOn(w.currentLineDir(), role, words)
+}
+
+func (w *world) saysInAGENTSmdOn(lineDir, role, words string) error {
+	path := filepath.Join(w.machineDirOn(lineDir, role), "AGENTS.md")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -225,12 +265,18 @@ func (w *world) everyMachineRunsPi() error {
 	if err != nil {
 		return fmt.Errorf("the real-agent examples need pi signed in: %v", err)
 	}
-	for _, role := range machineRoles {
-		if err := w.setHarness(role, "pi"); err != nil {
+	for _, lineDir := range w.lineDirs {
+		roles, err := machinesOn(lineDir)
+		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(w.loginPath(role), login, 0o600); err != nil {
-			return err
+		for _, role := range roles {
+			if err := w.setHarnessOn(lineDir, role, "pi"); err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(w.machineDirOn(lineDir, role), "auth.json"), login, 0o600); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

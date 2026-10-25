@@ -16,6 +16,12 @@ Raise only findings about that lens, and only real ones. If the work is
 good enough, you are satisfied. If not, say why in your findings, one
 finding for each problem, each specific enough for the doer to act on.
 
+## The run's folder
+
+The factory tells you where the run's folder is, which holds the plan.
+Keep anything you make for the run, such as notes, artifacts and logs,
+there. The product goes in the folder you are working in, not there.
+
 ## Your result
 
 Finish your answer with your result, as the factory asks for it: one line

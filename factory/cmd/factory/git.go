@@ -7,8 +7,12 @@ import (
 	"strings"
 )
 
-// prepareTarget makes the target folder if it is missing, and a Git
-// repository there if no repository contains it.
+// excludeLines is the pathspec that leaves a target's .assembly-lines/ out:
+// the lines, their machines and their runs are not the target's work.
+const excludeLines = ":(exclude)" + linesFolder
+
+// prepareTarget makes a Git repository of the target if no repository
+// contains it.
 func prepareTarget(target string) error {
 	if err := os.MkdirAll(target, 0o755); err != nil {
 		return err
@@ -20,18 +24,28 @@ func prepareTarget(target string) error {
 	return err
 }
 
-// commitTarget commits the target's work and plan, and nothing else: both
-// adding and committing are limited to the target, so unrelated staged and
-// unstaged changes stay as they are.
-func commitTarget(target, message string) error {
-	status, err := git(target, "status", "--porcelain", "-uall", "--", ".")
+// commitWork commits the target's work, and nothing else: both adding and
+// committing are limited to the target, leaving out its assembly lines, so
+// unrelated staged and unstaged changes stay as they are.
+func commitWork(target, message string) error {
+	return commitPaths(target, message, ".", excludeLines)
+}
+
+// commitRunFolder commits the run's folder, and nothing else. It is never
+// committed with the work.
+func commitRunFolder(f runFolder, message string) error {
+	return commitPaths(f.target, message, f.dir)
+}
+
+func commitPaths(dir, message string, paths ...string) error {
+	status, err := git(dir, append([]string{"status", "--porcelain", "-uall", "--"}, paths...)...)
 	if err != nil || status == "" {
 		return err
 	}
-	if _, err := git(target, "add", "-A", "--", "."); err != nil {
+	if _, err := git(dir, append([]string{"add", "-A", "--"}, paths...)...); err != nil {
 		return err
 	}
-	_, err = git(target, "commit", "-q", "-m", message, "--", ".")
+	_, err = git(dir, append([]string{"commit", "-q", "-m", message, "--"}, paths...)...)
 	return err
 }
 

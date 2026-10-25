@@ -2,7 +2,6 @@ package steps
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 
@@ -13,18 +12,6 @@ func (w *world) registerCommitSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^there are two new work commits$`, func() error { return w.workCommits(2) })
 	sc.Step(`^there are three new work commits$`, func() error { return w.workCommits(3) })
 	sc.Step(`^there are no new work commits$`, func() error { return w.workCommits(0) })
-	sc.Step(`^there are no new commits$`, func() error {
-		head, err := git(w.repo, "rev-parse", "HEAD")
-		if err != nil {
-			return err
-		}
-		if head != w.headBefore {
-			log, _ := git(w.repo, "log", "--oneline", w.headBefore+"..HEAD")
-			return fmt.Errorf("expected no new commits, got:\n%s", log)
-		}
-		return nil
-	})
-
 	sc.Step(`^each new work commit contains the work for one task$`, w.eachWorkCommitHoldsOneTask)
 	sc.Step(`^no new commit contains the work for the first task$`, func() error {
 		work, err := w.newWorkCommits()
@@ -43,16 +30,28 @@ func (w *world) registerCommitSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 
-	sc.Step(`^the committed plan matches the plan on disk$`, func() error { return committedPlanMatches(w.targetDir()) })
-	sc.Step(`^the target has no uncommitted changes$`, func() error { return noUncommittedChanges(w.targetDir()) })
+	sc.Step(`^the run's folder has been committed in commits of its own$`, w.runFolderCommittedApart)
+	sc.Step(`^the run's folder has no uncommitted changes$`, func() error {
+		return noUncommittedChanges(w.repo, w.runDir(w.current()))
+	})
 	sc.Step(`^the work for alpha and beta has been committed$`, func() error {
 		return workCommitted(w.targetDir(), "alpha", "beta")
 	})
 }
 
+// targetRel is the current run's target, as a path from the repository.
 func (w *world) targetRel() string {
-	rel, _ := filepath.Rel(w.repo, w.targetDir())
+	rel, _ := filepath.Rel(w.repo, w.fromRepo(w.current().target))
 	return rel
+}
+
+// targetPaths are the targets the example made, as paths from the repository.
+func (w *world) targetPaths() []string {
+	var paths []string
+	for path := range w.targets {
+		paths = append(paths, filepath.Clean(path))
+	}
+	return paths
 }
 
 // newWorkCommits lists the latest run's commits that hold product work in
@@ -112,35 +111,44 @@ func (w *world) eachWorkCommitHoldsOneTask() error {
 	return nil
 }
 
-func committedPlanMatches(target string) error {
-	committed, err := git(target, "show", "HEAD:./.factory/plan.md")
-	if err != nil {
-		return err
-	}
-	onDisk, err := os.ReadFile(filepath.Join(target, ".factory", "plan.md"))
-	if err != nil {
-		return err
-	}
-	if committed != string(trimNewlines(onDisk)) {
-		return fmt.Errorf("the committed plan:\n%s\ndiffers from the plan on disk:\n%s", committed, onDisk)
-	}
-	return nil
-}
-
-func trimNewlines(raw []byte) []byte {
-	for len(raw) > 0 && (raw[len(raw)-1] == '\n' || raw[len(raw)-1] == '\r') {
-		raw = raw[:len(raw)-1]
-	}
-	return raw
-}
-
-func noUncommittedChanges(target string) error {
-	status, err := git(target, "status", "--porcelain", "-uall", "--", ".")
+// noUncommittedChanges checks nothing under the path, new files included, is
+// uncommitted.
+func noUncommittedChanges(repo, path string) error {
+	status, err := git(repo, "status", "--porcelain", "-uall", "--", path)
 	if err != nil {
 		return err
 	}
 	if status != "" {
-		return fmt.Errorf("the target %s has uncommitted changes:\n%s", target, status)
+		return fmt.Errorf("%s has uncommitted changes:\n%s", path, status)
+	}
+	return nil
+}
+
+// runFolderCommittedApart checks the latest invocation committed the run's
+// folder, and that those commits hold nothing else: the work is in commits
+// of its own.
+func (w *world) runFolderCommittedApart() error {
+	folder, err := filepath.Rel(w.repo, w.runDir(w.current()))
+	if err != nil {
+		return err
+	}
+	commits, err := newCommits(w.repo, w.headBefore, folder)
+	if err != nil {
+		return err
+	}
+	if len(commits) == 0 {
+		return fmt.Errorf("the run's folder %s was not committed\n%s", folder, w.output)
+	}
+	for _, commit := range commits {
+		changed, err := changedFiles(w.repo, commit, ".")
+		if err != nil {
+			return err
+		}
+		for _, file := range changed {
+			if !underAny(file, []string{folder}) {
+				return fmt.Errorf("commit %s holds %s with the run's folder", commit, file)
+			}
+		}
 	}
 	return nil
 }
@@ -177,11 +185,7 @@ func (w *world) registerTargetSteps(sc *godog.ScenarioContext) {
 	})
 
 	sc.Step(`^the factory's own files and unrelated uncommitted changes are as they were$`, func() error {
-		var targets []string
-		for path := range w.targets {
-			targets = append(targets, filepath.Clean(path))
-		}
-		now, err := stateOutside(w.repo, targets)
+		now, err := stateOutside(w.repo, w.targetPaths())
 		if err != nil {
 			return err
 		}
@@ -198,47 +202,4 @@ func (w *world) registerTargetSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 
-	sc.Step(`^the target "([^"]*)" is unchanged$`, func(target string) error {
-		before, ok := w.before[target]
-		if !ok {
-			return fmt.Errorf("the target %q was not recorded before the run", target)
-		}
-		now, err := snapshot(w.fromRepo(target))
-		if err != nil {
-			return err
-		}
-		if changes := before.diff(now); changes != "" {
-			return fmt.Errorf("the target %q changed:\n%s", target, changes)
-		}
-		return nil
-	})
-
-	sc.Step(`^the targets "([^"]*)" and "([^"]*)" each have their own completed plan and committed work$`,
-		func(first, second string) error {
-			for _, target := range []string{first, second} {
-				dir := w.fromRepo(target)
-				tasks, err := readPlan(filepath.Join(dir, ".factory", "plan.md"))
-				if err != nil {
-					return err
-				}
-				if got := names(tasks); !slices.Equal(got, []string{"alpha", "beta"}) {
-					return fmt.Errorf("the target %q's plan has the tasks %v", target, got)
-				}
-				for _, t := range tasks {
-					if !t.done {
-						return fmt.Errorf("the target %q's plan has %q not done", target, t.name)
-					}
-				}
-				if err := committedPlanMatches(dir); err != nil {
-					return err
-				}
-				if err := workCommitted(dir, "alpha", "beta"); err != nil {
-					return fmt.Errorf("in the target %q: %w", target, err)
-				}
-				if err := noUncommittedChanges(dir); err != nil {
-					return err
-				}
-			}
-			return nil
-		})
 }

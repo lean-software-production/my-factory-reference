@@ -18,6 +18,9 @@
 //   - signins/<n>.txt: how call n signed in: the login it found or "api key"
 //   - behaviour.json: what it does, written by the step definitions
 //
+// Like a machine told to keep what it makes for the run in the run's folder,
+// it keeps a note of each call there.
+//
 // Without a behaviour it answers {"complete": true} and does nothing.
 package main
 
@@ -53,7 +56,22 @@ type Behaviour struct {
 	Finding string `json:"finding,omitempty"`
 }
 
-const planPath = ".factory/plan.md"
+// planPath is where the plan is, as the factory's prompt says: either "The
+// plan is <path>", or "There is no plan yet. It goes in <path>".
+var planPath string
+
+// planIn finds the plan's path in the prompt.
+func planIn(prompt string) string {
+	for _, line := range strings.Split(prompt, "\n") {
+		for _, prefix := range []string{"The plan is ", "There is no plan yet. It goes in "} {
+			if path, ok := strings.CutPrefix(line, prefix); ok {
+				return strings.TrimSpace(path)
+			}
+		}
+	}
+	fail("the prompt does not say where the plan is:\n%s", prompt)
+	return ""
+}
 
 var checklistLine = regexp.MustCompile(`^- \[( |x)\] (.+)$`)
 
@@ -65,8 +83,10 @@ func main() {
 	}
 	prompt := os.Args[len(os.Args)-1]
 	role := machineIn(prompt)
+	planPath = planIn(prompt)
 	logCall(dir, role, prompt)
 	signIn(dir)
+	keepNote(role, prompt)
 
 	var b Behaviour
 	raw, err := os.ReadFile(filepath.Join(dir, "behaviour.json"))
@@ -226,6 +246,24 @@ func writePlan(prose bool, tasks []string, done map[string]bool) {
 	if err := os.WriteFile(planPath, []byte(plan.String()), 0o644); err != nil {
 		fail("writing the plan: %v", err)
 	}
+}
+
+// keepNote does what a machine's instructions ask: it keeps anything it makes
+// for the run, here a note of its call, in the run's folder the prompt names.
+func keepNote(role, prompt string) {
+	const prefix = "The run's folder, where you keep anything you make for the run, is "
+	for _, line := range strings.Split(prompt, "\n") {
+		if folder, ok := strings.CutPrefix(line, prefix); ok {
+			notes, err := os.OpenFile(filepath.Join(strings.TrimSpace(folder), role+"-notes.txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			if err != nil {
+				fail("keeping a note: %v", err)
+			}
+			defer notes.Close()
+			fmt.Fprintln(notes, "called")
+			return
+		}
+	}
+	fail("the prompt does not say where the run's folder is:\n%s", prompt)
 }
 
 // machineIn is the machine being played, as a real agent would know it: by

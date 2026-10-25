@@ -14,6 +14,7 @@ import (
 // briefing is what the factory says to a machine.
 type briefing struct {
 	seed, plan string
+	runDir     string // the run's folder, where the plan is
 	planExists bool
 	before     string // the name of the machine before it on the line, if any
 	answer     string // that machine's result, as it said it
@@ -54,6 +55,7 @@ func (b briefing) String() string {
 	} else {
 		fmt.Fprintf(&prompt, "There is no plan yet. It goes in %s\n", b.plan)
 	}
+	fmt.Fprintf(&prompt, "The run's folder, where you keep anything you make for the run, is %s\n", b.runDir)
 	prompt.WriteString("\nWhat has been committed so far is in this folder's Git history.\n")
 	if b.changes != "" {
 		fmt.Fprintf(&prompt, "\nGit lists these changes in this folder that aren't committed yet:\n\n%s\n", b.changes)

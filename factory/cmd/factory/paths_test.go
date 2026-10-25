@@ -9,7 +9,8 @@ import (
 
 // A student runs the factory by absolute path or through a symlink, from
 // the repository root. Relative --seed and --target must resolve from the
-// caller's working directory, not from where the binary lives.
+// caller's working directory, not from where the binary lives, and nothing
+// is looked for beside the binary: the lines are in the target.
 func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 	binDir := t.TempDir()
 	binary := filepath.Join(binDir, "factory")
@@ -28,9 +29,10 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The assembly line is a folder next to the binary: its graph, and a
-	// folder for each machine on it, with a login of its own.
-	line := filepath.Join(binDir, "assembly-lines", "test")
+	// The assembly line is a folder in the target, which is in the caller's
+	// directory, not next to the binary: its graph, and a folder for each
+	// machine on it, with a login of its own.
+	line := filepath.Join(cwd, "t", ".assembly-lines", "test")
 	graph := "digraph { start -> planner; planner -> doer [label=\"not complete\"]; planner -> finish [label=complete]; doer -> planner }"
 	if err := os.MkdirAll(line, 0o755); err != nil {
 		t.Fatal(err)
@@ -51,7 +53,7 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 		}
 	}
 
-	run := exec.Command(binary, "--seed", "s.md", "--target", "t")
+	run := exec.Command(binary, "--run", "r", "--line", "test", "--seed", "s.md", "--target", "t")
 	run.Dir = cwd
 	out, err := run.CombinedOutput()
 	if err != nil {
@@ -63,5 +65,8 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(binDir, "t")); err == nil {
 		t.Errorf("the target was created next to the binary, in %s", binDir)
+	}
+	if _, err := os.Stat(filepath.Join(line, "runs", "r", "run.json")); err != nil {
+		t.Errorf("the run was not kept in its line's folder in the caller's target: %v\n%s", err, out)
 	}
 }
