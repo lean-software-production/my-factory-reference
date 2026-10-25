@@ -62,3 +62,20 @@ func TestEveryMachineIsGivenTheSameContext(t *testing.T) {
 		t.Errorf("a first machine with no plan is told:\n%s", first)
 	}
 }
+
+// A plan belongs to the machines and a run resumes it: a planner given a plan
+// that exists keeps its tasks. That rule is its instructions', on every line.
+func TestPlannersKeepAnExistingPlansTasks(t *testing.T) {
+	for _, line := range []string{"careful", "quick"} {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tetris", "tetris-005", ".assembly-lines", line, "machines", "planner", "AGENTS.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.Join(strings.Fields(string(raw)), " ")
+		for _, want := range []string{"## When a plan already exists", "Keep its tasks as they are, in order", "Don't add, remove, reword or split them"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("the %s line's planner AGENTS.md lacks %q", line, want)
+			}
+		}
+	}
+}

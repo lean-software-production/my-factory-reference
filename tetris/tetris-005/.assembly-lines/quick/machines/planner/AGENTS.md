@@ -13,6 +13,12 @@ Read the seed and write the plan where the factory says: the seed broken
 into a few tasks, in order, each marked as not done. Don't build anything
 in this pass.
 
+## When a plan already exists
+
+Keep its tasks as they are, in order. Don't add, remove, reword or split
+them: the plan is what you or an earlier run wrote, and the run carries on
+from it. Only mark done the tasks whose work is committed, as below.
+
 ## When the doer's work is committed
 
 The doer's work on a task is committed in the Git history of the folder you

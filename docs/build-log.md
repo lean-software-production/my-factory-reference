@@ -521,3 +521,16 @@ None in the tutorial or the starter. One thing to note:
   layout shows `planner` and `doer` only under `quick/machines/`. Its
   doer's `AGENTS.md` loses the section about the validator's findings; that is
   my reading of "configured differently".
+
+### Fix round after review
+
+The `homework-005` tag predates this fix. The review found two things.
+The steps copied a line from `tetris/tetris-005` with any `runs/` it held,
+so after a real run on that target every example would start with the
+"tetris" run already started: copies now leave `runs/` out
+(`TestACopyOfALineHoldsNoRuns`). And the planner's `AGENTS.md`, on both
+lines, said nothing about a plan that already exists, which is how the
+flake above came about: it now says to keep an existing plan's tasks as they
+are, in order, and only mark done the tasks whose work is committed
+(`TestPlannersKeepAnExistingPlansTasks`). Default suite 55/55 plus the unit
+tests; real-agent suite 8 of 8 again, 21:20 to 21:52 (**31m 13s**).

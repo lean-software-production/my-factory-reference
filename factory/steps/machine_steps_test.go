@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -122,6 +123,27 @@ func machinesOn(lineDir string) ([]string, error) {
 // README lays it out. Each example's targets get copies of them.
 const sourceLines = "../../tetris/tetris-005/.assembly-lines"
 
+// lineFiles lists the files of a line a copy of it gets: those Git would
+// keep, never a login, and never a run. The runs on the student's own lines
+// are theirs; a copy of a line starts with none, as the README's recipe for
+// copying a line into another target does.
+func lineFiles(line string) ([]string, error) {
+	listed, err := git(line, "ls-files", "--cached", "--others", "--exclude-standard", "--", ".")
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, file := range strings.Split(listed, "\n") {
+		if file != "" && !slices.Contains(strings.Split(file, "/"), "runs") {
+			files = append(files, file)
+		}
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("the line %s has no files", line)
+	}
+	return files, nil
+}
+
 // addLine puts a copy of the student's line in the current target, under
 // the name: only the files Git would keep, never a login. It chooses the
 // double as every machine's harness, and gives each machine a login.
@@ -130,15 +152,12 @@ func (w *world) addLine(source, name string) error {
 	if err != nil {
 		return err
 	}
-	listed, err := git(from, "ls-files", "--cached", "--others", "--exclude-standard", "--", ".")
+	files, err := lineFiles(from)
 	if err != nil {
 		return err
 	}
-	if listed == "" {
-		return fmt.Errorf("the line %s has no files", from)
-	}
 	lineDir := w.lineDirIn(w.target, name)
-	for _, file := range strings.Split(listed, "\n") {
+	for _, file := range files {
 		to := filepath.Join(lineDir, file)
 		if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 			return err
