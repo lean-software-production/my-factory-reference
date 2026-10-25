@@ -29,17 +29,36 @@ func TestInstructionsKeepATaskOpenUntilItsSubtasksAreDone(t *testing.T) {
 // The factory holds no instructions of its own for a machine: what a machine
 // is for, how it does its job and what it looks for are in its AGENTS.md.
 func TestPromptsHoldNoInstructionsOfTheMachines(t *testing.T) {
-	for name, prompt := range map[string]string{
-		"planner":   plannerPrompt("seed", "plan", []string{"complete"}),
-		"tracking":  trackingPrompt("seed", "plan", []string{"complete"}),
-		"doer":      doerPrompt("seed", "plan", `["a finding"]`, nil),
-		"validator": validatorPrompt("seed", "plan", "?? a.txt", []string{"satisfied"}),
-		"generic":   genericPrompt("seed", "plan", []string{"ready"}),
+	for name, b := range map[string]briefing{
+		"first":  {seed: "seed", plan: "plan", fields: resultFields([]string{"complete"}, false, false)},
+		"worker": {seed: "seed", plan: "plan", planExists: true, before: "checker", answer: `{"satisfied": false, "findings": ["a finding"]}`, fields: resultFields(nil, true, false)},
+		"gate":   {seed: "seed", plan: "plan", planExists: true, changes: "?? a.txt", fields: resultFields([]string{"satisfied"}, false, true)},
 	} {
+		prompt := b.String()
 		for _, instruction := range []string{"You are the", "lens", "subtask", "Don't commit", "implement"} {
 			if strings.Contains(prompt, instruction) {
 				t.Errorf("the %s prompt holds %q:\n%s", name, instruction, prompt)
 			}
 		}
+	}
+}
+
+// Every machine is told the same things, whatever it is called: the seed,
+// the plan, what the machine before it answered (findings included) and what
+// is uncommitted. Only the result it is asked for differs.
+func TestEveryMachineIsGivenTheSameContext(t *testing.T) {
+	b := briefing{
+		seed: "/s/seed.md", plan: "/t/.factory/plan.md", planExists: true,
+		before: "security", answer: `{"approved": false, "findings": ["no test"]}`, changes: "?? one.txt",
+		fields: resultFields([]string{"approved"}, false, true),
+	}
+	prompt := b.String()
+	for _, want := range []string{"/s/seed.md", "/t/.factory/plan.md", "the security", `"findings": ["no test"]`, "?? one.txt", `"approved"`} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the prompt lacks %q:\n%s", want, prompt)
+		}
+	}
+	if first := (briefing{seed: "s", plan: "p"}).String(); strings.Contains(first, "before you") || !strings.Contains(first, "no plan yet") {
+		t.Errorf("a first machine with no plan is told:\n%s", first)
 	}
 }

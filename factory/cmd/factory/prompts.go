@@ -5,13 +5,21 @@ import (
 	"strings"
 )
 
-// The prompts say what the factory knows and asks of a machine: where the
-// seed and the plan are, what the doer just did, what the validator found,
-// and the result it wants back. What a machine is for, and how it does its
-// job, are in its AGENTS.md.
-//
-// The result a machine is asked for names the fields its edges on the line
-// route on, and nothing else the line doesn't need.
+// Every machine is told the same things, whatever it is for: where the seed
+// and the plan are, what the machine before it on the line answered, and
+// what is uncommitted in the folder it works in. It is asked for the result
+// its edges route on. What a machine is for, and how it does its job, are
+// in its AGENTS.md.
+
+// briefing is what the factory says to a machine.
+type briefing struct {
+	seed, plan string
+	planExists bool
+	before     string // the name of the machine before it on the line, if any
+	answer     string // that machine's result, as it said it
+	changes    string // what Git lists as uncommitted in the folder, if anything
+	fields     []field
+}
 
 // field is a part of the result a machine is asked for.
 type field struct {
@@ -20,18 +28,41 @@ type field struct {
 	example string // a value of it, as JSON
 }
 
-// booleanFields describe the fields a machine's edges route on: each is true
-// or false, and the first one means what the machine's job is to decide.
-func booleanFields(names []string, meaning string) []field {
+// resultFields are the fields a machine is asked for. Each field its edges
+// route on is true or false. A machine the planner sends work to also names
+// the task it did, which names the commit of its work, and one that can send
+// work back lists what is wrong with it.
+func resultFields(routed []string, worker, canSendWorkBack bool) []field {
 	var fields []field
-	for i, name := range names {
-		f := field{name, "set to true or false", "false"}
-		if i == 0 && meaning != "" {
-			f.meaning = meaning
-		}
-		fields = append(fields, f)
+	if worker {
+		fields = append(fields, field{"task", "naming the task you did", `"set up the project"`})
+	}
+	for _, name := range routed {
+		fields = append(fields, field{name, "set to true or false", "false"})
+	}
+	if canSendWorkBack {
+		fields = append(fields, field{"findings", "listing what is wrong", `["the new code has no test"]`})
 	}
 	return fields
+}
+
+func (b briefing) String() string {
+	var prompt strings.Builder
+	fmt.Fprintf(&prompt, "The seed, which says what to build, is %s\n", b.seed)
+	if b.planExists {
+		fmt.Fprintf(&prompt, "The plan is %s\n", b.plan)
+	} else {
+		fmt.Fprintf(&prompt, "There is no plan yet. It goes in %s\n", b.plan)
+	}
+	prompt.WriteString("\nWhat has been committed so far is in this folder's Git history.\n")
+	if b.changes != "" {
+		fmt.Fprintf(&prompt, "\nGit lists these changes in this folder that aren't committed yet:\n\n%s\n", b.changes)
+	}
+	if b.answer != "" {
+		fmt.Fprintf(&prompt, "\nThe machine before you on the line, the %s, answered with this result:\n%s\n", b.before, b.answer)
+	}
+	prompt.WriteString("\n" + resultRequest(b.fields))
+	return prompt.String()
 }
 
 // resultRequest asks for the result: one line of JSON with the fields.
@@ -46,72 +77,4 @@ func resultRequest(fields []field) string {
 		request += ", with " + strings.Join(asks, ", and ")
 	}
 	return fmt.Sprintf("%s. For example:\n{%s}\n", request, strings.Join(example, ", "))
-}
-
-const (
-	planComplete = "set to true if every task in the plan is done and false if any is left"
-	workIsGood   = "set to true if the work is good enough and false if not"
-)
-
-func plannerFields(routed []string) []field {
-	return booleanFields(routed, planComplete)
-}
-
-func plannerPrompt(seed, plan string, routed []string) string {
-	return fmt.Sprintf(`The seed, which says what to build, is %s
-There is no plan yet. It goes in %s
-
-%s`, seed, plan, resultRequest(plannerFields(routed)))
-}
-
-func trackingPrompt(seed, plan string, routed []string) string {
-	return fmt.Sprintf(`The seed, which says what to build, is %s
-The plan is %s
-
-The doer's work on a task is committed in this folder's Git history.
-
-%s`, seed, plan, resultRequest(plannerFields(routed)))
-}
-
-func doerPrompt(seed, plan, findings string, routed []string) string {
-	fields := append([]field{{"task", "naming the task you did", `"set up the project"`}},
-		booleanFields(routed, "")...)
-	return fmt.Sprintf(`The seed, which says what to build, is %s
-The plan is %s
-
-%s%s`, seed, plan, resultRequest(fields), validated(findings))
-}
-
-// validated is the part of the doer's prompt that passes on what the
-// validator found wrong the last time, if it found anything.
-func validated(findings string) string {
-	if findings == "" {
-		return ""
-	}
-	return fmt.Sprintf(`
-The validator was not satisfied with your last attempt. Its findings, as JSON:
-%s
-`, findings)
-}
-
-func validatorPrompt(seed, plan, changes string, routed []string) string {
-	fields := append(booleanFields(routed, workIsGood),
-		field{"findings", "listing what is wrong", `["the new code has no test"]`})
-	return fmt.Sprintf(`The seed, which says what to build, is %s
-The plan is %s
-
-The doer has just done a task in this folder. Its work is the changes here that aren't committed yet. Git lists them:
-
-%s
-
-%s`, seed, plan, changes, resultRequest(fields))
-}
-
-// genericPrompt is for a machine the factory knows nothing more of than its
-// name: where the seed and the plan are, and the result its edges route on.
-func genericPrompt(seed, plan string, routed []string) string {
-	return fmt.Sprintf(`The seed, which says what to build, is %s
-The plan is %s
-
-%s`, seed, plan, resultRequest(booleanFields(routed, "")))
 }

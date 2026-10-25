@@ -10,8 +10,8 @@ factory commits your work.
 
 ## When the validator was not satisfied
 
-The factory then gives you the validator's findings on your last attempt,
-as JSON. Put each right. Record each finding in the plan as a subtask of
+The factory then gives you the result of the machine before you on the
+line, as JSON, with its findings on your last attempt. Put each right. Record each finding in the plan as a subtask of
 the task you are doing, and don't add it to the plan as a new task. Mark a
 subtask as done once you have put its finding right. The task itself is
 not done until every one of its subtasks is.

@@ -5,7 +5,7 @@
 //	    --append-system-prompt <AGENTS.md> <prompt>
 //
 // with PI_CODING_AGENT_DIR set to the machine's folder. It plays the machine
-// that folder is named for: the planner, the doer or the validator.
+// its instructions describe: the planner, the doer or the validator.
 //
 // Like pi, it is given the AGENTS.md named by --append-system-prompt, and
 // signs in with the auth.json in PI_CODING_AGENT_DIR or else with an API key
@@ -228,9 +228,15 @@ func writePlan(prose bool, tasks []string, done map[string]bool) {
 	}
 }
 
-// machineIn is the machine being played: the one whose folder the double
-// is pointed at, as pi is by PI_CODING_AGENT_DIR.
+// machineIn is the machine being played, as a real agent would know it: by
+// its instructions. The first line of the AGENTS.md it is given, "# Planner",
+// "# Doer" or "# Validator", says what it is for, whatever its folder is
+// called. Without instructions, it is the machine its folder is named for.
 func machineIn(_ string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(appendedInstructions()), "\n")
+	if heading, ok := strings.CutPrefix(first, "# "); ok {
+		return strings.ToLower(strings.TrimSpace(heading))
+	}
 	if name := filepath.Base(os.Getenv("PI_CODING_AGENT_DIR")); name != "." {
 		return name
 	}

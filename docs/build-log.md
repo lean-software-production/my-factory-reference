@@ -385,3 +385,23 @@ None in the tutorial or the starter. One thing to note:
   the spec doesn't say how a factory is to read a line without being run. I
   read it as "run the factory on a seed with do-nothing machines", and a
   refused line as a failed run in which no machine was called.
+
+### Fix round after review
+
+The `homework-004` tag predates this fix. The review found the factory
+recognised the planner, the doer and the validator by name (the finish
+check, the commit trigger and attempt reset, the findings going back, the
+prompts), so a renamed or added machine got the wrong treatment. Now the
+planner is the one machine with an edge to finish, whatever it is called
+(a line where two machines have one is refused); a machine the planner sends
+work to is asked for `task` (it names the commit); a non-planner machine with
+a "not" edge is asked for `findings`; and every machine is given the same
+context (seed, plan, the previous machine's result, the uncommitted changes).
+Role-specific instructions stay in each `AGENTS.md`. New tests: unit tests for
+the roles read from the graph and for the single edge to finish, and two runs
+of a line with the machines renamed `lead`, `builder` and `checker`
+(`steps/renamed_machines_test.go`). The agent double now decides which
+machine it plays from the `# Planner`/`# Doer`/`# Validator` heading of the
+AGENTS.md it is given, as a real agent would, not from its folder's name.
+Default suite 49/49 plus the new tests; real-agent suite 8 of 8 again, 19:42
+to 20:14 (**31m 48s**).

@@ -20,16 +20,14 @@ import (
 // it leaves: the edge is taken when that field is true, and one labelled
 // "not" and the field's name when it is false. An edge with no label is taken
 // whatever the result.
+//
+// What a machine is for is not in its name but in the line: the planner is
+// the one machine with an edge to finish, the machines it sends work to are
+// the workers, and a machine with a "not" edge can send work back. What each
+// does is in its AGENTS.md.
 const (
 	start  = "start"
 	finish = "finish"
-
-	// plannerName is the machine that decides whether there is more to do:
-	// the only one with an edge to finish. The doer does the work, and the
-	// validator checks it.
-	plannerName   = "planner"
-	doerName      = "doer"
-	validatorName = "validator"
 )
 
 type edge struct {
@@ -43,6 +41,43 @@ type assemblyLine struct {
 	dir   string
 	nodes []string // in the order they first appear
 	edges []edge   // in the order they are written
+}
+
+// planner is the machine that decides whether there is more to do: the only
+// one with an edge to finish. It is "" on a line that has none.
+func (l *assemblyLine) planner() string {
+	for _, e := range l.edges {
+		if e.to == finish {
+			return e.from
+		}
+	}
+	return ""
+}
+
+// isWorker says whether the planner sends work to the machine.
+func (l *assemblyLine) isWorker(node string) bool {
+	planner := l.planner()
+	for _, e := range l.edges {
+		if e.from == planner && e.to == node {
+			return true
+		}
+	}
+	return false
+}
+
+// canSendWorkBack says whether the machine, other than the planner, has an
+// edge taken when a field of its result is false: it can find work not good
+// enough.
+func (l *assemblyLine) canSendWorkBack(node string) bool {
+	if node == l.planner() {
+		return false
+	}
+	for _, e := range l.edges {
+		if _, whenFalse := e.condition(); e.from == node && whenFalse {
+			return true
+		}
+	}
+	return false
 }
 
 // machinesOn are the machines on the line: every node but start and finish.
@@ -152,8 +187,8 @@ func unquote(id string) string {
 }
 
 // check says why the factory cannot run the line, if it cannot: it names a
-// machine the factory does not have, it breaks the planner's place on the
-// line, or some machine on it has no way to finish.
+// machine the factory does not have, more than one machine has an edge to
+// finish, or some machine on it has no way to finish.
 func (l *assemblyLine) check() error {
 	if !slices.Contains(l.nodes, start) {
 		return fmt.Errorf("it has no %s", start)
@@ -163,10 +198,17 @@ func (l *assemblyLine) check() error {
 			return fmt.Errorf("the factory has no machine called %q (looked for %s)", name, l.machineDir(name))
 		}
 	}
+	var finishers []string
 	for _, e := range l.edges {
-		if e.to == finish && e.from != plannerName {
-			return fmt.Errorf("only the %s may have an edge to %s, and %s has one", plannerName, finish, e.from)
+		if e.to == finish && !slices.Contains(finishers, e.from) {
+			finishers = append(finishers, e.from)
 		}
+	}
+	if slices.Contains(finishers, start) {
+		return fmt.Errorf("%s has an edge to %s, so no machine is the planner", start, finish)
+	}
+	if len(finishers) > 1 {
+		return fmt.Errorf("only one machine may have an edge to %s, the planner, and %s do", finish, strings.Join(finishers, " and "))
 	}
 	var stuck []string
 	for _, node := range l.nodes {

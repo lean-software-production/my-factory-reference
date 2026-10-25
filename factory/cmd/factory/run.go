@@ -26,12 +26,14 @@ type run struct {
 // A task is finished when the line comes back to the planner with the work
 // done: the work is committed then, and the planner records it in the plan.
 func (r *run) along() error {
+	const defaultMessage = "Do the next task"
 	var (
-		node     = start
-		res      = result{}
-		task     = "Do the next task" // the doer's latest, which names its commit
-		findings string
-		entered  = map[string]int{} // how many times each machine was called for this task
+		planner = r.line.planner()
+		node    = start
+		res     = result{}
+		said    string // the latest result as the machine said it
+		message = defaultMessage
+		entered = map[string]int{} // how many times each machine was called for this task
 	)
 	for {
 		next, err := r.line.next(node, res)
@@ -42,57 +44,45 @@ func (r *run) along() error {
 			fmt.Println("factory stopped")
 			return nil
 		}
-		m := r.machines[next]
 
-		if next == plannerName {
+		if next == planner {
 			if node != start {
-				if err := commitTarget(r.target, task); err != nil {
+				if err := commitTarget(r.target, message); err != nil {
 					return err
 				}
 			}
-			entered = map[string]int{}
+			entered, message = map[string]int{}, defaultMessage
 		} else if entered[next]++; entered[next] > r.attempts {
 			return fmt.Errorf("a task hit its limit of %d attempts: the assembly line sent it to the %s again without getting it done", r.attempts, next)
 		}
-		if next == doerName {
-			findings = ""
-			if node == validatorName {
-				findings = findingsOf(res)
-			}
-		}
 
-		prompt, err := r.prompt(next, findings)
+		changes, err := git(r.target, "status", "--short", "-uall", "--", ".")
 		if err != nil {
 			return err
 		}
 		planned := fileExists(r.plan)
-		if res, err = ask(m, r.target, prompt); err != nil {
+		before := node
+		if node == start {
+			before = ""
+		}
+		prompt := briefing{r.seed, r.plan, planned, before, said, changes,
+			resultFields(r.line.routedFields(next), r.line.isWorker(next), r.line.canSendWorkBack(next))}
+		if said, res, err = ask(r.machines[next], r.target, prompt.String()); err != nil {
 			return err
 		}
-		switch next {
-		case plannerName:
-			message := "Update the plan"
+		if next == planner {
+			commit := "Update the plan"
 			if !planned {
-				message = "Write the plan"
+				commit = "Write the plan"
 			}
-			if err := commitTarget(r.target, message); err != nil {
+			if err := commitTarget(r.target, commit); err != nil {
 				return err
 			}
-		case doerName:
-			if name, ok := res["task"].(string); ok && name != "" {
-				task = name
-			}
+		} else if task, ok := res["task"].(string); ok && task != "" && message == defaultMessage && r.line.isWorker(next) {
+			message = task
 		}
 		node = next
 	}
-}
-
-// findingsOf is what the validator found wrong, as JSON.
-func findingsOf(verdict result) string {
-	if raw, err := json.Marshal(verdict["findings"]); err == nil && verdict["findings"] != nil {
-		return string(raw)
-	}
-	return "[]" // not satisfied, but it didn't say why
 }
 
 func fileExists(path string) bool {
@@ -100,39 +90,18 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// prompt is what the factory says to the machine it is calling.
-func (r *run) prompt(name, findings string) (string, error) {
-	fields := r.line.routedFields(name)
-	switch name {
-	case plannerName:
-		if !fileExists(r.plan) {
-			return plannerPrompt(r.seed, r.plan, fields), nil
-		}
-		return trackingPrompt(r.seed, r.plan, fields), nil
-	case doerName:
-		return doerPrompt(r.seed, r.plan, findings, fields), nil
-	case validatorName:
-		changes, err := git(r.target, "status", "--short", "-uall", "--", ".")
-		if err != nil {
-			return "", err
-		}
-		return validatorPrompt(r.seed, r.plan, changes, fields), nil
-	}
-	return genericPrompt(r.seed, r.plan, fields), nil
-}
-
 // ask runs a machine and reads its result.
-func ask(m machine, dir, prompt string) (result, error) {
+func ask(m machine, dir, prompt string) (string, result, error) {
 	answer, err := m.run(dir, prompt)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 	line, res := lastResult(answer)
 	if res == nil {
-		return nil, fmt.Errorf("could not read the %s's result: no line of its answer is a JSON object:\n%s", m.name, answer)
+		return "", nil, fmt.Errorf("could not read the %s's result: no line of its answer is a JSON object:\n%s", m.name, answer)
 	}
 	fmt.Println(line)
-	return res, nil
+	return line, res, nil
 }
 
 // lastResult finds the last line of the answer that is a JSON object.
