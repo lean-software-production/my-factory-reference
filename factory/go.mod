@@ -2,7 +2,11 @@ module github.com/lean-software-production/my-factory-reference/factory
 
 go 1.27
 
-require github.com/cucumber/godog v0.16.0
+require (
+	github.com/creack/pty v1.1.24
+	github.com/cucumber/godog v0.16.0
+	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
+)
 
 require (
 	github.com/cucumber/gherkin/go/v42 v42.0.0 // indirect

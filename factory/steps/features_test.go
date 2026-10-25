@@ -2,11 +2,67 @@
 package steps
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/cucumber/godog"
 )
+
+// Built once for the whole suite by TestMain.
+var (
+	factoryBinary string // the factory, copied into each example's workspace
+	agentDouble   string // the double chosen as the agent on the command line
+	fakePiDir     string // holds a double called pi, put first on the PATH
+)
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "factory-suite-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	code := 1
+	if err := buildSuite(dir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+	} else {
+		code = m.Run()
+	}
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
+// buildSuite builds the factory and the doubles into dir, and gives every
+// git the suite runs, the factory's included, the same quiet identity.
+func buildSuite(dir string) error {
+	bin := filepath.Join(dir, "bin")
+	fakePiDir = filepath.Join(dir, "pi")
+	factoryBinary = filepath.Join(dir, "factory")
+	agentDouble = filepath.Join(bin, "agent")
+	builds := [][]string{
+		{"-o", factoryBinary, "../cmd/factory"},
+		{"-o", agentDouble, "./doubles/agent"},
+		{"-o", filepath.Join(fakePiDir, "pi"), "./doubles/agent"},
+	}
+	for _, args := range builds {
+		build := exec.Command("go", append([]string{"build"}, args...)...)
+		if out, err := build.CombinedOutput(); err != nil {
+			return fmt.Errorf("go build %v: %v\n%s", args, err, out)
+		}
+	}
+
+	gitconfig := filepath.Join(dir, "gitconfig")
+	config := "[user]\n\tname = Factory Suite\n\temail = suite@example.com\n" +
+		"[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n"
+	if err := os.WriteFile(gitconfig, []byte(config), 0o644); err != nil {
+		return err
+	}
+	os.Setenv("GIT_CONFIG_GLOBAL", gitconfig)
+	os.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	return nil
+}
 
 // TestFeatures runs ../spec/features. FACTORY_TAGS picks the examples; by
 // default it leaves out the ones that need a real agent.
@@ -29,6 +85,3 @@ func TestFeatures(t *testing.T) {
 		t.Fatal("the feature suite failed")
 	}
 }
-
-// InitializeScenario registers the step definitions.
-func InitializeScenario(sc *godog.ScenarioContext) {}
