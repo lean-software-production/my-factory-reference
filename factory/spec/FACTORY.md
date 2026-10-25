@@ -9,10 +9,17 @@ complete.
 
 The factory writes no project code, no plan and no verdict itself, and
 never reads the plan. Its three machines do — the planner, the doer and
-the validator — each run by a harness: `pi` by default, or another
-chosen for the run. Each machine answers with a result, a line of JSON
-describing the job it did, and the factory reads the planner's and the
-validator's results to decide what happens next.
+the validator. Each has a folder of its own in the factory's folder,
+`machines/<name>/`, which is the configuration of the harness that runs
+it, `pi` by default or another named there. The folder holds the
+machine's `AGENTS.md`, its instructions, and the rest of its
+configuration, such as its model. It also holds the machine's own copy
+of your login, which is kept out of Git; with no login, a
+machine uses its provider's API key. The harness runs on that folder's
+configuration and no other: not yours, and none found in or above the
+target, whose files are the machine's work. Each machine answers with a
+result, a line of JSON describing the job it did, and the factory reads
+the planner's and the validator's results to decide what happens next.
 
 Each run requires both a seed file and a target folder. Relative paths
 are resolved from the caller's working directory; absolute paths work too.
@@ -25,5 +32,7 @@ no seed, without calling an agent. Before stopping successfully, the
 factory records the final plan, including updates after a work commit.
 A completed run leaves no uncommitted changes in the target.
 
-New since iteration 1: `validation.feature`; passes that end on
-validation; and a planner, which takes the plan over from the one agent.
+New since iteration 2: each machine has a folder of its own, its
+harness's configuration, with an `AGENTS.md` and a login of its own. The factory holds no
+instructions of its own for any machine, and each machine names its own
+harness.
