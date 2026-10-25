@@ -21,7 +21,8 @@ still just runs `pi`. Tokens are summed from pi's session files.
   out), with all 270 steps undefined. `TestRelativePathsResolveFromCallerCwd`
   failed, because the factory didn't accept `--agent` and didn't build
   anything yet.
-- **Green:** 39 of 39 examples and 428 steps pass in about 25s.
+- **Green:** 30 of 30 examples and 270 steps pass in about 15s, and so does
+  `TestRelativePathsResolveFromCallerCwd`.
 - **Mutation checks:** to check the steps can fail, I broke the factory
   on purpose, one way at a time. Each break made examples fail:
   - committing without pathspecs: 4 `target.feature` examples;
@@ -114,9 +115,7 @@ None in the tutorial or the starter. Two things about the build box:
   is ("You are the doer of ..."). A new `spy` double wraps the real `pi`
   and records whether it changed the target, for "a validator reports
   findings, and changes neither the plan nor the work".
-- **Green:** 32 of 32 default examples and their steps pass in about 25s.
-  (The suite reports 39 scenarios in all with the 7 `@real-agent` ones
-  excluded by its tag filter; see the commands below.)
+- **Green:** 39 of 39 examples and 428 steps pass in about 25s.
 - **Mutation checks:** each of these made examples fail: not passing the
   findings to the doer (1 example); treating every verdict as satisfied (5);
   allowing one attempt whatever `--attempts` says (4); leaving the lens
@@ -153,3 +152,14 @@ the plan and findings with pi.
 ### Problems found
 
 None in the tutorial or the starter.
+
+### Fix round after review
+
+The `homework-002` tag predates this fix. The review found that the
+prompts never said a task isn't done until its subtasks are: the planner
+now leaves a task undone while a subtask is open, and the doer marks the
+subtasks it has put right. (It also found that my edit of this log had
+overwritten homework 1's "Green" line; that's restored.)
+
+Real-agent checks after the fix: "The first task's work is untestable" and
+"A finding on the first task" pass (8m 38s together).

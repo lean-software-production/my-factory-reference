@@ -139,7 +139,7 @@ func validated(findings string) string {
 	return fmt.Sprintf(`
 The validator was not satisfied with your last attempt. Its findings, as JSON:
 %s
-Put each right. Record each finding in the plan as a subtask of the task you are doing, and don't add it to the plan as a new task.
+Put each right. Record each finding in the plan as a subtask of the task you are doing, and don't add it to the plan as a new task. Mark a subtask as done once you have put its finding right. The task itself is not done until every one of its subtasks is.
 `, findings)
 }
 
@@ -149,7 +149,7 @@ func trackingPrompt(seed, plan string) string {
 The seed, which says what to build, is %s
 The plan is %s
 
-The doer's work on a task is committed in this folder's Git history. Mark as done in the plan each task whose work is committed. Change nothing else.
+The doer's work on a task is committed in this folder's Git history. Mark as done in the plan each task whose work is committed, unless it has a subtask that is not done: a task is not done until its subtasks are, so leave such a task as it is. Change nothing else.
 
 Finish your answer with your result: one line of JSON, on its own, with the field "complete" set to true if every task in the plan is done and false if any is left. For example:
 {"complete": false}
