@@ -49,8 +49,7 @@ func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 	sc.Step(`^the validator is never satisfied$`, func() { w.does.Rejects, w.does.Finding = -1, finding })
-	sc.Step(`^the factory allows at most three attempts per pass$`, func() { w.attempts = 3 })
-	sc.Step(`^the doer writes a file called SENTINEL$`, func() { w.does.ProductFile = "SENTINEL" })
+	sc.Step(`^the factory allows at most three attempts at a task$`, func() { w.attempts = 3 })
 	sc.Step(`^the validator says "([^"]*)" before its result$`, func(words string) { w.does.ValidatorSays = words })
 	sc.Step(`^the validator answers in prose, with no result$`, func() { w.does.ValidatorNoResult = true })
 	sc.Step(`^the planner keeps its plan in prose$`, func() { w.does.PlannerProse = true })

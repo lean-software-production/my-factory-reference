@@ -11,13 +11,12 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// A plan whose first task is meant to be done badly: hard to test, and with
+// A plan whose only task is meant to be done badly: hard to test, and with
 // its messages in English wherever they are used. The validator should find
 // fault with that work, whatever lens it brings. Real validators are asked
 // to judge it, so the plan says what is wrong with the task plainly.
 var flawedTasks = []string{
 	"Write the piece-dropping logic in one script, drop.js, with everything inline at the top level: no functions, no modules, no exports and no tests, and every message shown to the player written as an English string where it is used. This is deliberate: the work is meant to be impossible to test or translate.",
-	"Show the score",
 }
 
 func (w *world) registerValidationSteps(sc *godog.ScenarioContext) {
@@ -28,9 +27,10 @@ func (w *world) registerValidationSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^the plan has no new task$`, w.planHasNoNewTask)
 }
 
-// useFlawedPlan commits the plan of flawed tasks in the target. A pass with
-// no plan only plans, so a real validator has nothing to look at until
-// there is one. It does nothing if that plan is already there.
+// useFlawedPlan commits the plan of flawed tasks in the target. With no plan
+// the line would first have the planner plan the whole seed, and the run
+// would build all of it; the flawed task keeps the run to one task. It does
+// nothing if that plan is already there.
 func (w *world) useFlawedPlan() error {
 	if w.planTasks != nil {
 		return nil
@@ -51,7 +51,7 @@ func (w *world) useFlawedPlan() error {
 }
 
 // firstAttemptIsUntestable has a real doer make an untestable first attempt
-// by giving it a task that asks for one, and runs a pass with a spy around
+// by giving it a task that asks for one, and runs the line with a spy around
 // the validator, which is otherwise real.
 func (w *world) firstAttemptIsUntestable() error {
 	if err := w.useFlawedPlan(); err != nil {
@@ -60,10 +60,10 @@ func (w *world) firstAttemptIsUntestable() error {
 	if err := w.setHarness("validator", spyDouble); err != nil {
 		return err
 	}
-	if err := w.run(false); err != nil {
+	if err := w.run(); err != nil {
 		return err
 	}
-	if w.exitErr != nil && !strings.Contains(w.output, "the pass hit its limit") {
+	if w.exitErr != nil && !strings.Contains(w.output, "a task hit its limit") {
 		return fmt.Errorf("the factory failed (%v):\n%s", w.exitErr, w.output)
 	}
 	return nil

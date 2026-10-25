@@ -5,7 +5,7 @@
 //	    --append-system-prompt <AGENTS.md> <prompt>
 //
 // with PI_CODING_AGENT_DIR set to the machine's folder. It plays the machine
-// the prompt asks a result of: the planner, the doer or the validator.
+// that folder is named for: the planner, the doer or the validator.
 //
 // Like pi, it is given the AGENTS.md named by --append-system-prompt, and
 // signs in with the auth.json in PI_CODING_AGENT_DIR or else with an API key
@@ -228,16 +228,11 @@ func writePlan(prose bool, tasks []string, done map[string]bool) {
 	}
 }
 
-// resultField is the field of the result each machine is asked for, and so
-// the machine that is being asked.
-var resultField = regexp.MustCompile(`with the field "(complete|satisfied|task)"`)
-
-var machineOf = map[string]string{"complete": "planner", "satisfied": "validator", "task": "doer"}
-
-// machineIn is the machine a prompt asks a result of.
-func machineIn(prompt string) string {
-	if m := resultField.FindStringSubmatch(prompt); m != nil {
-		return machineOf[m[1]]
+// machineIn is the machine being played: the one whose folder the double
+// is pointed at, as pi is by PI_CODING_AGENT_DIR.
+func machineIn(_ string) string {
+	if name := filepath.Base(os.Getenv("PI_CODING_AGENT_DIR")); name != "." {
+		return name
 	}
 	return "unknown"
 }

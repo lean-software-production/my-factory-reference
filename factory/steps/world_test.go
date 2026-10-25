@@ -44,6 +44,7 @@ type world struct {
 	ws        string // the example's temporary folder, removed when it ends
 	repo      string // the test repository, where the factory is run from
 	doubleDir string // where the doubles log their calls and keep state
+	lineDir   string // the factory's assembly line, in the example's copy of the factory
 
 	seed     string // as given on the command line, from repo
 	target   string // as given on the command line, from repo
@@ -112,7 +113,7 @@ func (w *world) setUp() error {
 	if err := os.Symlink("../factory/factory", filepath.Join(w.repo, "bin", "factory")); err != nil {
 		return err
 	}
-	if err := w.copyMachines(); err != nil {
+	if err := w.copyLine(); err != nil {
 		return err
 	}
 	if _, err := git(w.repo, "init", "-q"); err != nil {
@@ -135,9 +136,9 @@ func (w *world) useTarget(path string) {
 	}
 }
 
-// run runs the factory once from the repository root, through bin/factory,
+// run runs the factory from the repository root, through bin/factory,
 // as a student would.
-func (w *world) run(all bool) error {
+func (w *world) run() error {
 	var args []string
 	if !w.noSeed {
 		args = append(args, "--seed", w.seed)
@@ -147,9 +148,6 @@ func (w *world) run(all bool) error {
 	}
 	if w.attempts > 0 {
 		args = append(args, "--attempts", strconv.Itoa(w.attempts))
-	}
-	if all {
-		args = append(args, "--all")
 	}
 
 	raw, err := json.Marshal(w.does)
@@ -200,9 +198,9 @@ func (w *world) run(all bool) error {
 	return nil
 }
 
-// runToSuccess runs the factory to completion, and fails unless it succeeds.
+// runToSuccess runs the factory, and fails unless it succeeds.
 func (w *world) runToSuccess() error {
-	if err := w.run(true); err != nil {
+	if err := w.run(); err != nil {
 		return err
 	}
 	if w.exitErr != nil || w.timedOut {
@@ -296,6 +294,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 		return ctx, nil
 	})
 	w.registerSetupSteps(sc)
+	w.registerLineSteps(sc)
 	w.registerRunSteps(sc)
 	w.registerPlanSteps(sc)
 	w.registerCommitSteps(sc)

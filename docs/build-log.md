@@ -289,3 +289,99 @@ None in the tutorial or the starter that stopped the build. One to look at:
 - Also noticed: the recipe's `--no-session` is left out of the factory's
   call so the sessions stay in the machine's folder (ignored by Git) for
   checking what a machine did.
+
+## Homework 004: The assembly line
+
+- **Adopted:** iteration `004-assembly-line` from the tutorial's `main`, at
+  18:09.
+- **Red:** with the adopted spec and homework 3's factory, 49 examples ran
+  (the 8 `@real-agent` ones left out): 3 passed and 46 were undefined (515
+  steps: 364 passed, 76 undefined, 75 skipped). Every example that runs the
+  factory was undefined, because the steps said "the factory runs one pass"
+  and the spec now says "the factory runs"; `assembly-line.feature` was new.
+  The failures were all in what the README calls new. No step-drift problem
+  in the tutorial and no regression.
+- **What changed in the factory:**
+  - The line is `factory/assembly-lines/careful/`: `assembly-line.dot`, and
+    the three machines' folders (moved there, unchanged, from
+    `factory/machines/`) in `machines/` beside it. The factory has one line,
+    the only folder in `assembly-lines/`, found from the binary like
+    `machines/` was.
+  - The graph is read with `gographviz` (not by hand), before any machine is
+    called. The factory refuses a line that names a machine with no folder
+    ("no machine called ..."), that has an edge to `finish` from any machine
+    but the planner, or on which `finish` can't be reached from some node
+    ("finish cannot be reached from validator").
+  - The pass is gone. The factory goes along the line from `start`, calls the
+    machine it comes to, and takes the first edge leaving it that the result
+    takes: an unlabelled edge always, `field` when the field is true,
+    `not field` when it is false. A result without the field, or with a
+    field that is not true or false, stops the run, naming the machine and
+    the field.
+  - What the line doesn't say is the factory's. The work is committed, with
+    the doer's `task` as its message, when the line goes from a machine back
+    to the planner; the planner's changes to the plan are committed after it
+    runs. The attempt limit (`--attempts`, 3) counts how often each machine
+    is called for a task, and a task is over when the planner is called; one
+    more than the limit stops the run with "a task hit its limit".
+    `--all` is gone.
+  - Prompts ask each machine for the fields its edges route on (so
+    relabelled edges change the prompt), plus the doer's `task` and the
+    validator's `findings`. A machine on the line the factory has no prompt
+    for gets the seed, the plan and its routed fields.
+- **Doubles:** the agent double now plays the machine whose folder it is
+  pointed at (`PI_CODING_AGENT_DIR`), rather than guessing from the field the
+  prompt asks for, because the field can now be named by the line. New steps
+  edit the example's `assembly-line.dot` as text. "The factory reads the
+  assembly line" runs the factory on a seed with the doubles; "it refuses it"
+  means a failed run in which no agent was called.
+- **Green:** 49 of 49 examples and 515 steps pass in about 38s.
+- **Mutation checks:** each of these made examples fail: not checking that a
+  machine has a folder (1 example, "A misspelt validator"); not checking that
+  `finish` can be reached (1, "Satisfied work has nowhere to go"); taking
+  every edge whatever the label (17); ignoring `--attempts` (2); resetting
+  the counts for a task never (1, "The work is wrong first time"); never
+  committing when the line returns to the planner (the suite hangs: the
+  planner never marks a task done, so the run never ends, and the 10-minute
+  `go test` limit fails it).
+- **Unit tests the doubles can't replace:** `TestLineIsReadWhateverIsQuoted`
+  and `TestLineThatIsNotAWellFormedDigraphIsRefused` (the library's reading
+  of quoted names and labels, and bad graphs).
+  `TestRelativePathsResolveFromCallerCwd` needed an assembly line next to its
+  binary.
+- **Time:** about 30 minutes from the fetch to a green suite (18:09 to about
+  18:40), most of it rewriting the run loop and the steps together rather
+  than one example at a time; the mutation checks took another 15 minutes.
+- **README commands:** `bin/factory --seed tetris/spec.md --target
+  tetris/tetris-004` runs a real agent, so through `bin/factory` I checked
+  only the launcher and the checks before any machine runs: a missing target
+  and a missing seed are reported; in a copy of the factory, a line with the
+  edge from the validator to the planner taken out is refused ("finish cannot
+  be reached from doer; ... from validator"), and so is one naming
+  `validater`, in both cases before the target is created. The "Once your
+  suite passes" section and the bonus round were skipped.
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 60m`,
+with the pi wrapper first on the `PATH`: 18:51 to 19:34 (**43m 19s**),
+**8 of 8 pass** (`go test` ran without `-v`, so there are no times for the
+single examples). Every example now runs the whole line, validator included,
+until the planner says the plan is complete, where homeworks 2 and 3 ran
+one pass. That is why the run took longer than homework 3's 25 minutes.
+
+- To keep the two validator examples to one task each, the step that sets
+  the validator's lens and "the doer's first attempt at a task is
+  untestable" now commit a plan of just the one flawed task (before, it had a
+  second task, "Show the score", which a pass never reached).
+- Tokens weren't summed: the sessions are in the examples' temporary
+  folders, removed with them.
+
+### Problems found
+
+None in the tutorial or the starter. One thing to note:
+
+- "The factory reads the assembly line" has no seed in its Background, and
+  the spec doesn't say how a factory is to read a line without being run. I
+  read it as "run the factory on a seed with do-nothing machines", and a
+  refused line as a failed run in which no machine was called.

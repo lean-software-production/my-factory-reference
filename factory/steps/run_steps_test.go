@@ -10,8 +10,7 @@ import (
 )
 
 func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^the factory runs one pass$`, func() error { return w.run(false) })
-	sc.Step(`^the factory runs to completion$`, func() error { return w.run(true) })
+	sc.Step(`^the factory runs$`, w.run)
 	sc.Step(`^the factory builds the target "([^"]*)" to completion$`, func(target string) error {
 		w.useTarget(target)
 		return w.runToSuccess()
@@ -34,7 +33,10 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^it reports that it could not read the validator's result$`, func() error {
 		return w.reports("could not read the validator's result")
 	})
-	sc.Step(`^it reports that the pass hit its limit$`, func() error { return w.reports("the pass hit its limit") })
+	sc.Step(`^it reports that a task hit its limit$`, func() error { return w.reports("a task hit its limit") })
+	sc.Step(`^it reports that the result of validator has no field "([^"]*)"$`, func(field string) error {
+		return w.reports(fmt.Sprintf("the result of validator has no field %q", field))
+	})
 	sc.Step(`^it reports that there is no seed$`, func() error { return w.reports("there is no seed") })
 	sc.Step(`^it reports that a target is required$`, func() error { return w.reports("a target is required") })
 
@@ -44,12 +46,37 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		return w.calledBy(filepath.Base(agentDouble), true)
 	})
 	sc.Step(`^no agent has been called$`, func() error { return w.calledTimes(0) })
-	sc.Step(`^the doer has (not been called|been called (?:once|twice|three times))$`, func(times string) error {
+	sc.Step(`^the validator has not been called$`, func() error {
+		calls, err := w.callsTo("validator")
+		if err != nil {
+			return err
+		}
+		if len(calls) != 0 {
+			return fmt.Errorf("expected the validator not to be called, but it was called %d times\n%s", len(calls), w.output)
+		}
+		return nil
+	})
+	sc.Step(`^the planner was called before the doer$`, func() error {
+		calls, err := w.calls()
+		if err != nil {
+			return err
+		}
+		for _, c := range calls {
+			if c.role == "doer" {
+				return fmt.Errorf("the doer was called before the planner\n%s", w.output)
+			}
+			if c.role == "planner" {
+				return nil
+			}
+		}
+		return fmt.Errorf("the planner was never called\n%s", w.output)
+	})
+	sc.Step(`^the doer has (not been called|been called (?:once|twice|three times|four times))$`, func(times string) error {
 		calls, err := w.callsTo("doer")
 		if err != nil {
 			return err
 		}
-		want := map[string]int{"not been called": 0, "been called once": 1, "been called twice": 2, "been called three times": 3}[times]
+		want := map[string]int{"not been called": 0, "been called once": 1, "been called twice": 2, "been called three times": 3, "been called four times": 4}[times]
 		if len(calls) != want {
 			return fmt.Errorf("expected the doer to have %s, but it was called %d times\n%s", times, len(calls), w.output)
 		}
@@ -69,17 +96,10 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 	sc.Step(`^the validator was given the work for the second task$`, func() error {
-		return w.validatorWasGiven(w.planTasks[1] + ".txt")
+		return w.someCallWasGiven("validator", w.planTasks[1]+".txt")
 	})
 	sc.Step(`^the doer was given the validator's findings$`, func() error {
-		prompt, err := w.lastPrompt("doer")
-		if err != nil {
-			return err
-		}
-		if !strings.Contains(prompt, finding) {
-			return fmt.Errorf("the doer was not given the finding %q; it was given:\n%s", finding, prompt)
-		}
-		return nil
+		return w.someCallWasGiven("doer", finding)
 	})
 	sc.Step(`^the (doer|validator) was given "([^"]*)"$`, func(role, words string) error {
 		w.subject = role
@@ -99,12 +119,15 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 	sc.Step(`^it was not given the work for the first task$`, func() error {
-		prompt, err := w.lastPrompt("validator")
+		calls, err := w.callsTo("validator")
 		if err != nil {
 			return err
 		}
-		if file := w.planTasks[0] + ".txt"; strings.Contains(prompt, file) {
-			return fmt.Errorf("the validator was given %s; it was given:\n%s", file, prompt)
+		file := w.planTasks[0] + ".txt"
+		for _, c := range calls {
+			if strings.Contains(c.prompt, file) {
+				return fmt.Errorf("the validator was given %s; it was given:\n%s", file, c.prompt)
+			}
 		}
 		return nil
 	})
@@ -123,7 +146,20 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		})
 }
 
-func (w *world) validatorWasGiven(words string) error { return w.wasGiven("validator", words) }
+// someCallWasGiven checks that the machine, in one of its calls, was given
+// the words.
+func (w *world) someCallWasGiven(role, words string) error {
+	calls, err := w.callsTo(role)
+	if err != nil {
+		return err
+	}
+	for _, c := range calls {
+		if strings.Contains(c.prompt, words) {
+			return nil
+		}
+	}
+	return fmt.Errorf("the %s was not given %q in any of its %d calls\n%s", role, words, len(calls), w.output)
+}
 
 // wasGiven checks the machine's instructions and prompt, the latest time it
 // was called, hold the words.

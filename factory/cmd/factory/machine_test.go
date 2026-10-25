@@ -9,7 +9,7 @@ import (
 // yours, and none found in or above the target. The doubles cannot see
 // whether the real pi would find any, so this checks how it is called.
 func TestHarnessIsCalledOnTheMachinesConfigurationOnly(t *testing.T) {
-	m := machine{role: "doer", dir: "/factory/machines/doer", harness: "pi", model: "openai-codex/gpt-6-sol"}
+	m := machine{name: "doer", dir: "/factory/machines/doer", harness: "pi", model: "openai-codex/gpt-6-sol"}
 	cmd := m.command("/work/target", "do it")
 
 	if cmd.Dir != "/work/target" {

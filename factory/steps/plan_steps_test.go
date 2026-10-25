@@ -64,9 +64,6 @@ func (w *world) registerPlanSteps(sc *godog.ScenarioContext) {
 	})
 	sc.Step(`^the plan still has those three tasks$`, func() error { return w.planHasTasks(w.planTasks) })
 
-	sc.Step(`^the plan shows the first task as done$`, func() error { return w.planShows(0, 1, true) })
-	sc.Step(`^the plan shows the first two tasks as done$`, func() error { return w.planShows(0, 2, true) })
-	sc.Step(`^the plan shows the other two as not done$`, func() error { return w.planShows(1, 3, false) })
 	sc.Step(`^the plan shows every task as done$`, func() error { return w.planShows(0, -1, true) })
 	sc.Step(`^the plan shows every task as not done$`, func() error { return w.planShows(0, -1, false) })
 }

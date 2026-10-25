@@ -16,7 +16,7 @@ func TestInstructionsKeepATaskOpenUntilItsSubtasksAreDone(t *testing.T) {
 		"doer: task waits":          {"doer", "not done until every one of its subtasks is"},
 		"planner leaves open tasks": {"planner", "unless it has a subtask that is not done"},
 	} {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "machines", tc.machine, "AGENTS.md"))
+		raw, err := os.ReadFile(filepath.Join("..", "..", "assembly-lines", "careful", "machines", tc.machine, "AGENTS.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -30,10 +30,11 @@ func TestInstructionsKeepATaskOpenUntilItsSubtasksAreDone(t *testing.T) {
 // is for, how it does its job and what it looks for are in its AGENTS.md.
 func TestPromptsHoldNoInstructionsOfTheMachines(t *testing.T) {
 	for name, prompt := range map[string]string{
-		"planner":   plannerPrompt("seed", "plan"),
-		"tracking":  trackingPrompt("seed", "plan"),
-		"doer":      doerPrompt("seed", "plan", `["a finding"]`),
-		"validator": validatorPrompt("seed", "plan", "?? a.txt"),
+		"planner":   plannerPrompt("seed", "plan", []string{"complete"}),
+		"tracking":  trackingPrompt("seed", "plan", []string{"complete"}),
+		"doer":      doerPrompt("seed", "plan", `["a finding"]`, nil),
+		"validator": validatorPrompt("seed", "plan", "?? a.txt", []string{"satisfied"}),
+		"generic":   genericPrompt("seed", "plan", []string{"ready"}),
 	} {
 		for _, instruction := range []string{"You are the", "lens", "subtask", "Don't commit", "implement"} {
 			if strings.Contains(prompt, instruction) {

@@ -11,12 +11,12 @@ import (
 )
 
 // A machine does one kind of job for the factory: the planner keeps the
-// plan, the doer does the work, and the validator checks it. Each has a
-// folder of its own, machines/<name>/ in the factory's folder, which is the
-// configuration of the harness that runs it: its AGENTS.md, its
-// machine.json, and its own copy of your login.
+// plan, the doer does the work, and the validator checks it. Each is named
+// on the assembly line and has a folder of its own beside the line's graph,
+// machines/<name>/, which is the configuration of the harness that runs it:
+// its AGENTS.md, its machine.json, and its own copy of your login.
 type machine struct {
-	role    string
+	name    string
 	dir     string // the machine's folder
 	harness string // the command that runs it
 	model   string // <provider>/<model>
@@ -28,67 +28,38 @@ type config struct {
 	Model   string `json:"model"`
 }
 
-// machineRoles are the machines a run needs, in the order they first work.
-var machineRoles = []string{"planner", "doer", "validator"}
-
 // defaultHarness runs a machine whose machine.json names none.
 const defaultHarness = "pi"
 
-// loadMachines reads the three machines' folders from the factory's.
-func loadMachines() (map[string]machine, error) {
-	root, err := machinesFolder()
-	if err != nil {
-		return nil, err
-	}
+// loadMachines reads the folders of the machines on the line.
+func loadMachines(l *assemblyLine) (map[string]machine, error) {
 	machines := map[string]machine{}
-	for _, role := range machineRoles {
-		m, err := loadMachine(role, filepath.Join(root, role))
+	for _, name := range l.machinesOn() {
+		m, err := loadMachine(name, l.machineDir(name))
 		if err != nil {
 			return nil, err
 		}
-		machines[role] = m
+		machines[name] = m
 	}
 	return machines, nil
 }
 
-// machinesFolder finds machines/ in the factory's folder: next to the
-// factory's binary, or in the folder above it (the launcher builds the
-// binary into .build/). It is found from the binary, not from where the
-// factory is run.
-func machinesFolder() (string, error) {
-	exe, err := os.Executable()
-	if err == nil {
-		exe, err = filepath.EvalSymlinks(exe)
-	}
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Dir(exe)
-	candidates := []string{filepath.Join(dir, "machines"), filepath.Join(filepath.Dir(dir), "machines")}
-	for _, candidate := range candidates {
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate, nil
-		}
-	}
-	return "", fmt.Errorf("there is no machines folder: looked in %s", strings.Join(candidates, " and "))
-}
-
-func loadMachine(role, dir string) (machine, error) {
+func loadMachine(name, dir string) (machine, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, "machine.json"))
 	if err != nil {
-		return machine{}, fmt.Errorf("could not read the %s's configuration: %v", role, err)
+		return machine{}, fmt.Errorf("could not read the %s's configuration: %v", name, err)
 	}
 	var c config
 	if err := json.Unmarshal(raw, &c); err != nil {
-		return machine{}, fmt.Errorf("could not read the %s's machine.json: %v", role, err)
+		return machine{}, fmt.Errorf("could not read the %s's machine.json: %v", name, err)
 	}
 	if c.Harness == "" {
 		c.Harness = defaultHarness
 	}
 	if provider, _, _ := strings.Cut(c.Model, "/"); provider == "" || provider == c.Model {
-		return machine{}, fmt.Errorf(`the %s's machine.json names no model as "<provider>/<model>" (%s)`, role, filepath.Join(dir, "machine.json"))
+		return machine{}, fmt.Errorf(`the %s's machine.json names no model as "<provider>/<model>" (%s)`, name, filepath.Join(dir, "machine.json"))
 	}
-	return machine{role, dir, c.Harness, c.Model}, nil
+	return machine{name, dir, c.Harness, c.Model}, nil
 }
 
 func (m machine) provider() string {
@@ -131,7 +102,7 @@ func (m machine) checkSignIn() error {
 	if key != "" {
 		hint += ", or set " + key
 	}
-	return fmt.Errorf("the %s cannot sign in to %s: it has no login of its own for it, and no API key (%s)", m.role, m.provider(), hint)
+	return fmt.Errorf("the %s cannot sign in to %s: it has no login of its own for it, and no API key (%s)", m.name, m.provider(), hint)
 }
 
 // command is how the machine's harness is called, in dir. A harness is
@@ -156,10 +127,10 @@ func (m machine) run(dir, prompt string) (string, error) {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("could not run the %s (%s): %v", m.role, m.harness, err)
+		return "", fmt.Errorf("could not run the %s (%s): %v", m.name, m.harness, err)
 	}
 	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("the %s (%s) failed (%v):\n%s", m.role, m.harness, err, out.String())
+		return "", fmt.Errorf("the %s (%s) failed (%v):\n%s", m.name, m.harness, err, out.String())
 	}
 	return out.String(), nil
 }

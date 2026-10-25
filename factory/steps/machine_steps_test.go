@@ -86,23 +86,26 @@ func (w *world) registerMachineSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^it reports that the doer cannot sign in$`, func() error { return w.reports("the doer cannot sign in") })
 }
 
-func (w *world) machinesDir() string { return filepath.Join(w.factoryDir(), "machines") }
+// The factory's one assembly line is a folder in assembly-lines/, holding
+// its graph and, in machines/, the machines on it.
+func (w *world) linesDir() string { return filepath.Join(w.factoryDir(), "assembly-lines") }
 
-func (w *world) machineDir(role string) string { return filepath.Join(w.machinesDir(), role) }
+func (w *world) machineDir(role string) string { return filepath.Join(w.lineDir, "machines", role) }
 
 func (w *world) loginPath(role string) string { return filepath.Join(w.machineDir(role), "auth.json") }
 
 var machineRoles = []string{"planner", "doer", "validator"}
 
-// copyMachines puts the real machines' folders in the example's copy of the
-// factory: only the files Git would keep, never a login. It chooses the
-// double as every machine's harness, and gives each machine a login.
-func (w *world) copyMachines() error {
-	real, err := filepath.Abs(filepath.Join("..", "machines"))
+// copyLine puts the real assembly line in the example's copy of the
+// factory, its machines' folders included: only the files Git would keep,
+// never a login. It chooses the double as every machine's harness, and
+// gives each machine a login.
+func (w *world) copyLine() error {
+	real, err := filepath.Abs(filepath.Join("..", "assembly-lines"))
 	if err != nil {
 		return err
 	}
-	listed, err := git(filepath.Dir(real), "ls-files", "--cached", "--others", "--exclude-standard", "--", "machines")
+	listed, err := git(filepath.Dir(real), "ls-files", "--cached", "--others", "--exclude-standard", "--", "assembly-lines")
 	if err != nil {
 		return err
 	}
@@ -115,6 +118,11 @@ func (w *world) copyMachines() error {
 			return err
 		}
 	}
+	lines, err := os.ReadDir(w.linesDir())
+	if err != nil || len(lines) != 1 {
+		return fmt.Errorf("expected the factory to have one assembly line in %s (%v)", w.linesDir(), err)
+	}
+	w.lineDir = filepath.Join(w.linesDir(), lines[0].Name())
 	for _, role := range machineRoles {
 		if err := w.setHarness(role, agentDouble); err != nil {
 			return err

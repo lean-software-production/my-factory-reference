@@ -10,7 +10,7 @@ import (
 )
 
 func (w *world) registerCommitSteps(sc *godog.ScenarioContext) {
-	sc.Step(`^there is one new work commit$`, func() error { return w.workCommits(1) })
+	sc.Step(`^there are two new work commits$`, func() error { return w.workCommits(2) })
 	sc.Step(`^there are three new work commits$`, func() error { return w.workCommits(3) })
 	sc.Step(`^there are no new work commits$`, func() error { return w.workCommits(0) })
 	sc.Step(`^there are no new commits$`, func() error {
@@ -25,13 +25,22 @@ func (w *world) registerCommitSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 
-	sc.Step(`^its only product file is SENTINEL$`, func() error { return w.workIs("SENTINEL") })
-	sc.Step(`^it contains the work for the (first|second) task$`, func(which string) error {
-		task := w.planTasks[0]
-		if which == "second" {
-			task = w.planTasks[1]
+	sc.Step(`^each new work commit contains the work for one task$`, w.eachWorkCommitHoldsOneTask)
+	sc.Step(`^no new commit contains the work for the first task$`, func() error {
+		work, err := w.newWorkCommits()
+		if err != nil {
+			return err
 		}
-		return w.workIs(task + ".txt")
+		for _, commit := range work {
+			changed, err := changedFiles(w.repo, commit, w.targetRel())
+			if err != nil {
+				return err
+			}
+			if slices.Contains(productFiles(changed), w.planTasks[0]+".txt") {
+				return fmt.Errorf("commit %s contains the work for the first task", commit)
+			}
+		}
+		return nil
 	})
 
 	sc.Step(`^the committed plan matches the plan on disk$`, func() error { return committedPlanMatches(w.targetDir()) })
@@ -78,21 +87,27 @@ func (w *world) workCommits(n int) error {
 	return nil
 }
 
-// workIs checks the one new work commit's product is exactly the file.
-func (w *world) workIs(file string) error {
+// eachWorkCommitHoldsOneTask checks every new work commit holds the work
+// for one task of the plan, and that no two commits hold the same task's.
+func (w *world) eachWorkCommitHoldsOneTask() error {
 	work, err := w.newWorkCommits()
 	if err != nil {
 		return err
 	}
-	if len(work) != 1 {
-		return fmt.Errorf("expected one new work commit, got %d", len(work))
-	}
-	changed, err := changedFiles(w.repo, work[0], w.targetRel())
-	if err != nil {
-		return err
-	}
-	if product := productFiles(changed); !slices.Equal(product, []string{file}) {
-		return fmt.Errorf("expected the work commit's product to be %s, got %v", file, product)
+	var seen []string
+	for _, commit := range work {
+		changed, err := changedFiles(w.repo, commit, w.targetRel())
+		if err != nil {
+			return err
+		}
+		product := productFiles(changed)
+		if len(product) != 1 {
+			return fmt.Errorf("commit %s has the product files %v, not the work for one task", commit, product)
+		}
+		if slices.Contains(seen, product[0]) {
+			return fmt.Errorf("%s is the work of more than one commit", product[0])
+		}
+		seen = append(seen, product[0])
 	}
 	return nil
 }

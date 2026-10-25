@@ -28,15 +28,24 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Each machine has a folder next to the binary, with a login of its own.
-	for _, role := range []string{"planner", "doer", "validator"} {
-		dir := filepath.Join(binDir, "machines", role)
+	// The assembly line is a folder next to the binary: its graph, and a
+	// folder for each machine on it, with a login of its own.
+	line := filepath.Join(binDir, "assembly-lines", "test")
+	graph := "digraph { start -> planner; planner -> doer [label=\"not complete\"]; planner -> finish [label=complete]; doer -> planner }"
+	if err := os.MkdirAll(line, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(line, "assembly-line.dot"), []byte(graph), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"planner", "doer"} {
+		dir := filepath.Join(line, "machines", name)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 		config := `{"harness": "` + agent + `", "model": "anthropic/test"}`
-		for name, text := range map[string]string{"machine.json": config, "AGENTS.md": "# " + role + "\n", "auth.json": `{"anthropic": {}}`} {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o600); err != nil {
+		for file, text := range map[string]string{"machine.json": config, "AGENTS.md": "# " + name + "\n", "auth.json": `{"anthropic": {}}`} {
+			if err := os.WriteFile(filepath.Join(dir, file), []byte(text), 0o600); err != nil {
 				t.Fatal(err)
 			}
 		}
