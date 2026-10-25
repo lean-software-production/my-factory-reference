@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,11 +19,14 @@ import (
 
 // behaviour is what the agent double does; see doubles/agent.
 type behaviour struct {
-	Tasks       []string `json:"tasks"`
-	Prose       bool     `json:"prose,omitempty"`
-	ProductFile string   `json:"product_file,omitempty"`
-	SayFirst    string   `json:"say_first,omitempty"`
-	NoResult    bool     `json:"no_result,omitempty"`
+	Tasks             []string `json:"tasks"`
+	PlannerProse      bool     `json:"planner_prose,omitempty"`
+	DoerProse         bool     `json:"doer_prose,omitempty"`
+	ProductFile       string   `json:"product_file,omitempty"`
+	ValidatorSays     string   `json:"validator_says,omitempty"`
+	ValidatorNoResult bool     `json:"validator_no_result,omitempty"`
+	Rejects           int      `json:"rejects,omitempty"`
+	Finding           string   `json:"finding,omitempty"`
 }
 
 // A run of the factory that the double plays the agent in is short; one
@@ -40,13 +44,17 @@ type world struct {
 	repo      string // the test repository, where the factory is run from
 	doubleDir string // where the doubles log their calls and keep state
 
-	seed     string // as given on the command line, from repo
-	target   string // as given on the command line, from repo
-	noSeed   bool
-	noTarget bool
-	agent    string // the agent chosen on the command line, if any
-	realPi   bool   // the agent is the real pi
-	does     behaviour
+	seed      string // as given on the command line, from repo
+	target    string // as given on the command line, from repo
+	noSeed    bool
+	noTarget  bool
+	agent     string // the harness chosen for every machine on the command line, if any
+	doer      string // the harness chosen for the doer alone, if any
+	validator string // the harness chosen for the validator alone, if any
+	attempts  int    // the most attempts a pass is allowed, if set
+	lens      string // what the validator looks for, if chosen
+	realPi    bool   // the agent is the real pi
+	does      behaviour
 
 	planTasks []string          // the tasks of a plan an example wrote
 	targets   map[string]string // every target this example named, by path from repo
@@ -139,6 +147,18 @@ func (w *world) run(all bool) error {
 	if w.agent != "" && !w.realPi {
 		args = append(args, "--agent", w.agent)
 	}
+	if w.doer != "" {
+		args = append(args, "--doer", w.doer)
+	}
+	if w.validator != "" {
+		args = append(args, "--validator", w.validator)
+	}
+	if w.attempts > 0 {
+		args = append(args, "--attempts", strconv.Itoa(w.attempts))
+	}
+	if w.lens != "" {
+		args = append(args, "--lens", w.lens)
+	}
 	if all {
 		args = append(args, "--all")
 	}
@@ -161,12 +181,11 @@ func (w *world) run(all bool) error {
 	}
 
 	limit := doubleRunLimit
-	env := os.Environ()
+	env := append(os.Environ(), "DOUBLE_DIR="+w.doubleDir)
 	if w.realPi {
 		limit = realRunLimit
 	} else {
-		env = append(env, "PATH="+fakePiDir+string(os.PathListSeparator)+os.Getenv("PATH"),
-			"DOUBLE_DIR="+w.doubleDir)
+		env = append(env, "PATH="+fakePiDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
@@ -197,8 +216,15 @@ func (w *world) runToSuccess() error {
 	return nil
 }
 
-// calls lists the names the doubles were called by, in order.
-func (w *world) calls() ([]string, error) {
+// call is one call a double was given: the name it was called by, and the
+// machine it was asked to be.
+type call struct {
+	name, role string
+	prompt     string
+}
+
+// calls lists the calls the doubles were given, in order.
+func (w *world) calls() ([]call, error) {
 	raw, err := os.ReadFile(filepath.Join(w.doubleDir, "calls.log"))
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -206,17 +232,43 @@ func (w *world) calls() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return strings.Fields(string(raw)), nil
+	var calls []call
+	for n, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return nil, fmt.Errorf("calls.log line %d is %q", n+1, line)
+		}
+		prompt, err := os.ReadFile(filepath.Join(w.doubleDir, "prompts", fmt.Sprintf("%d.txt", n+1)))
+		if err != nil {
+			return nil, err
+		}
+		calls = append(calls, call{fields[0], fields[1], string(prompt)})
+	}
+	return calls, nil
 }
 
-// lastPrompt is what the latest agent call was given.
-func (w *world) lastPrompt() (string, error) {
-	entries, err := os.ReadDir(filepath.Join(w.doubleDir, "prompts"))
-	if err != nil || len(entries) == 0 {
-		return "", fmt.Errorf("the agent was never called")
+// callsTo lists the calls made to the machine in that role.
+func (w *world) callsTo(role string) ([]call, error) {
+	calls, err := w.calls()
+	var mine []call
+	for _, c := range calls {
+		if c.role == role {
+			mine = append(mine, c)
+		}
 	}
-	raw, err := os.ReadFile(filepath.Join(w.doubleDir, "prompts", fmt.Sprintf("%d.txt", len(entries))))
-	return string(raw), err
+	return mine, err
+}
+
+// lastPrompt is what the machine in that role was last given.
+func (w *world) lastPrompt(role string) (string, error) {
+	calls, err := w.callsTo(role)
+	if err != nil {
+		return "", err
+	}
+	if len(calls) == 0 {
+		return "", fmt.Errorf("the %s was never called", role)
+	}
+	return calls[len(calls)-1].prompt, nil
 }
 
 // reports checks that the factory's output says what it should.
@@ -249,4 +301,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	w.registerCommitSteps(sc)
 	w.registerTargetSteps(sc)
 	w.registerRealAgentSteps(sc)
+	w.registerValidationSteps(sc)
 }

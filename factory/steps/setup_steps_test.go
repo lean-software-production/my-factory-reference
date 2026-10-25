@@ -24,6 +24,9 @@ Keep the complete game display within 24 terminal rows, including the board, sco
 You may install packages if they help you render or control the terminal display.
 `
 
+// What the validator finds wrong, when it is not satisfied.
+const finding = "no test covers the new behaviour"
+
 // The tasks of a plan an example writes itself.
 var threeTasks = []string{"one", "two", "three"}
 
@@ -32,17 +35,28 @@ func (w *world) registerSetupSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^a new target$`, func() { w.useTarget("games/new-game") })
 	sc.Step(`^a seed describing a game of Tetris$`, func() error { return w.writeSeed(tetrisSeed) })
 
-	sc.Step(`^the agent plans the tasks alpha and beta, and does one task a pass$`, func() {
-		w.does.Tasks = []string{"alpha", "beta"}
+	sc.Step(`^the planner plans the tasks alpha and beta$`, func() { w.does.Tasks = []string{"alpha", "beta"} })
+	sc.Step(`^the doer does the next task in the plan$`, func() {}) // what the double does unless told otherwise
+	sc.Step(`^the validator is always satisfied$`, func() {})       // likewise
+	sc.Step(`^the validator is not satisfied the first time$`, func() { w.does.Rejects, w.does.Finding = 1, finding })
+	sc.Step(`^the validator's lens is (\w+)$`, func(lens string) error {
+		w.lens = lens
+		if w.realPi {
+			return w.useFlawedPlan()
+		}
+		return nil
 	})
-	sc.Step(`^the agent writes a file called SENTINEL$`, func() { w.does.ProductFile = "SENTINEL" })
-	sc.Step(`^the agent says "([^"]*)" before its result$`, func(words string) { w.does.SayFirst = words })
-	sc.Step(`^the agent answers in prose, with no result$`, func() { w.does.NoResult = true })
-	sc.Step(`^the agent keeps its plan in prose$`, func() { w.does.Prose = true })
+	sc.Step(`^the validator is never satisfied$`, func() { w.does.Rejects, w.does.Finding = -1, finding })
+	sc.Step(`^the factory allows at most three attempts per pass$`, func() { w.attempts = 3 })
+	sc.Step(`^the doer writes a file called SENTINEL$`, func() { w.does.ProductFile = "SENTINEL" })
+	sc.Step(`^the validator says "([^"]*)" before its result$`, func(words string) { w.does.ValidatorSays = words })
+	sc.Step(`^the validator answers in prose, with no result$`, func() { w.does.ValidatorNoResult = true })
+	sc.Step(`^the planner keeps its plan in prose$`, func() { w.does.PlannerProse = true })
+	sc.Step(`^the doer keeps its plan in prose$`, func() { w.does.DoerProse = true })
 
 	sc.Step(`^no harness is chosen$`, func() { w.agent = "" })
-	sc.Step(`^the agent cannot be run$`, func() { w.agent = filepath.Join(w.ws, "no-such-agent") })
-	sc.Step(`^the agent is pi$`, func() { w.realPi = true })
+	sc.Step(`^the doer cannot be run$`, func() { w.doer = filepath.Join(w.ws, "no-such-harness") })
+	sc.Step(`^every machine runs pi$`, func() { w.realPi = true })
 
 	sc.Step(`^no seed is chosen$`, func() { w.noSeed = true })
 	sc.Step(`^the seed has been deleted$`, func() error { return os.Remove(w.seedPath()) })

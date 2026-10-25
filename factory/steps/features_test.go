@@ -16,6 +16,7 @@ var (
 	factoryBinary string // the factory, copied into each example's workspace
 	agentDouble   string // the double chosen as the agent on the command line
 	fakePiDir     string // holds a double called pi, put first on the PATH
+	spyDouble     string // wraps the real pi, noting whether it changed the target
 )
 
 func TestMain(m *testing.M) {
@@ -41,10 +42,12 @@ func buildSuite(dir string) error {
 	fakePiDir = filepath.Join(dir, "pi")
 	factoryBinary = filepath.Join(dir, "factory")
 	agentDouble = filepath.Join(bin, "agent")
+	spyDouble = filepath.Join(bin, "spy")
 	builds := [][]string{
 		{"-o", factoryBinary, "../cmd/factory"},
 		{"-o", agentDouble, "./doubles/agent"},
 		{"-o", filepath.Join(fakePiDir, "pi"), "./doubles/agent"},
+		{"-o", spyDouble, "./doubles/spy"},
 	}
 	for _, args := range builds {
 		build := exec.Command("go", append([]string{"build"}, args...)...)

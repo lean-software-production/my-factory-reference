@@ -250,7 +250,7 @@ func (w *world) planComesFromSeed() error {
 	if err != nil {
 		return err
 	}
-	question := fmt.Sprintf(`You are checking a plan against the seed it was made from.
+	return w.judge(fmt.Sprintf(`You are checking a plan against the seed it was made from.
 
 The seed:
 <<<
@@ -262,18 +262,23 @@ The plan:
 %s
 >>>
 
-Is every task in the plan a step towards building what the seed describes, with no task for anything the seed doesn't ask for or imply? Setting up the project, tests and the like count as steps towards it.
+Is every task in the plan a step towards building what the seed describes, with no task for anything the seed doesn't ask for or imply? Setting up the project, tests and the like count as steps towards it.`, seed, plan),
+		"not every task comes from the seed")
+}
 
-Answer with one line of JSON and nothing else: {"verdict": true or false, "reason": "<one sentence>"}`, seed, plan)
-
+// judge asks pi a yes or no question, and fails with the reason it gives
+// unless the answer is yes.
+func (w *world) judge(question, otherwise string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	judge := exec.CommandContext(ctx, "pi", "-p", "--no-tools", "--no-session", question)
+	judge := exec.CommandContext(ctx, "pi", "-p", "--no-tools", "--no-session", question+`
+
+Answer with one line of JSON and nothing else: {"verdict": true or false, "reason": "<one sentence>"}`)
 	judge.Dir = w.ws
 	judge.Stderr = io.Discard
 	out, err := judge.Output()
 	if err != nil {
-		return fmt.Errorf("asking pi to judge the plan: %v\n%s", err, out)
+		return fmt.Errorf("asking pi to judge: %v\n%s", err, out)
 	}
 	var verdict struct {
 		Verdict *bool  `json:"verdict"`
@@ -286,10 +291,10 @@ Answer with one line of JSON and nothing else: {"verdict": true or false, "reaso
 		}
 	}
 	if verdict.Verdict == nil {
-		return fmt.Errorf("pi gave no verdict on the plan:\n%s", out)
+		return fmt.Errorf("pi gave no verdict:\n%s", out)
 	}
 	if !*verdict.Verdict {
-		return fmt.Errorf("not every task comes from the seed: %s\n%s", verdict.Reason, plan)
+		return fmt.Errorf("%s: %s", otherwise, verdict.Reason)
 	}
 	return nil
 }

@@ -21,8 +21,7 @@ still just runs `pi`. Tokens are summed from pi's session files.
   out), with all 270 steps undefined. `TestRelativePathsResolveFromCallerCwd`
   failed, because the factory didn't accept `--agent` and didn't build
   anything yet.
-- **Green:** 30 of 30 examples and 270 steps pass in about 15s, and so does
-  `TestRelativePathsResolveFromCallerCwd`.
+- **Green:** 39 of 39 examples and 428 steps pass in about 25s.
 - **Mutation checks:** to check the steps can fail, I broke the factory
   on purpose, one way at a time. Each break made examples fail:
   - committing without pathspecs: 4 `target.feature` examples;
@@ -88,3 +87,69 @@ None in the tutorial or the starter. Two things about the build box:
   hangs. Go's `os/exec` gives a child `/dev/null` by default, so this
   factory doesn't hang. It's worth knowing if a homework's hints ever show
   a shell loop.
+
+## Homework 002: Checking the work
+
+- **Adopted:** iteration `002-checking-the-work` from the tutorial's
+  `main`, at 15:47.
+- **Lens:** the README asks the student to pick what the validator looks
+  for. The factory's default is "single responsibility", and
+  `--lens <words>` changes it. The factory only passes the words on to the
+  validator.
+- **Red:** with the adopted spec and homework 1's factory, 39 examples ran
+  (the 7 `@real-agent` ones left out), with 428 steps: 123 passed, 149
+  undefined and 156 skipped. Every example was undefined, because the
+  steps of homework 1 said "the agent" where the spec now says the planner,
+  the doer and the validator, and `validation.feature` had no steps at all.
+  The failures were all in what the README calls new. No step-drift problem
+  in the tutorial and no regression.
+- **What changed in the factory:** a pass with no plan runs the planner and
+  commits the plan. Otherwise the doer does the next task, the validator
+  looks at the uncommitted changes, and its findings go back to the doer
+  until it is satisfied or `--attempts` (3 by default) run out; then the
+  work is committed and the planner marks the task done and says whether the
+  plan is complete. New flags: `--planner`, `--doer`, `--validator` (a
+  harness for one machine, otherwise `--agent`), `--attempts`, `--lens`.
+- **Doubles:** the agent double plays whichever machine its prompt says it
+  is ("You are the doer of ..."). A new `spy` double wraps the real `pi`
+  and records whether it changed the target, for "a validator reports
+  findings, and changes neither the plan nor the work".
+- **Green:** 32 of 32 default examples and their steps pass in about 25s.
+  (The suite reports 39 scenarios in all with the 7 `@real-agent` ones
+  excluded by its tag filter; see the commands below.)
+- **Mutation checks:** each of these made examples fail: not passing the
+  findings to the doer (1 example); treating every verdict as satisfied (5);
+  allowing one attempt whatever `--attempts` says (4); leaving the lens
+  out of the validator's prompt (1).
+- **Time:** about 35 minutes from the fetch to a green suite (15:47 to
+  about 16:20), most of it the previous implementer's work.
+- **README commands:** the README's command runs a real agent, so through
+  `bin/factory` I checked only that the launcher builds and parses the
+  arguments: an unrunnable harness reports "could not run the planner
+  (no-such-harness)", and a missing seed reports "there is no seed". The
+  "Once your suite passes" section and the bonus round were skipped.
+  Nothing in homeworks 3 to 8 depends on them (homework 4's README
+  mentions that `tetris/tetris-002` would resume its plan, which is
+  advice, not a requirement).
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 60m`,
+with the pi wrapper first on the `PATH`: first run 16:25 to 17:02
+(**37m 32s**), **6 of 7 pass**. The failing one was "A validator that looks
+at testability". The factory was fine: the validator reported two findings,
+that game rules were trapped in a terminal-only loop and that no tests or
+test command were added. The step's judge (pi) said the second wasn't
+about testability, but about missing tests. A missing test is something
+testability asks for, so the step was too strict. I told the judge that a
+lack of what the lens calls for counts, and ran the example again: it
+passes (4m 20s). The six that passed in the first run were not repeated.
+
+How the steps check the real examples: the "untestable first attempt"
+examples commit a plan whose first task asks for an untestable, English-only
+piece of code, run a pass with the `spy` around the validator, and judge
+the plan and findings with pi.
+
+### Problems found
+
+None in the tutorial or the starter.
