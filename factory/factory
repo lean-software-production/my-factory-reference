@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Builds the factory from its source, then runs it with the caller's arguments.
+# It never changes the caller's working directory, so relative --seed and
+# --target paths stay relative to wherever the caller is.
+set -euo pipefail
+dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+go -C "$dir" build -o "$dir/.build/factory" ./cmd/factory
+exec "$dir/.build/factory" "$@"
