@@ -1,91 +1,46 @@
-# Homework 5 — Runs and targets
+# Homework 6 — Fan out
 
-Read `FACTORY.md`, then the feature files in `features/`. Together they are
-the whole spec of the factory at this point, not just the new parts.
+Read `FACTORY.md`, then the feature files in `features/`.
 
-Your factory already builds into the target folder you choose. Until now
-every invocation supplied a seed and target and used the same assembly line. Each
-target kept one plan: an implicit run for that generation. This homework
-introduces named runs that remember what they build and how, while the
-factory source stays in `factory/`.
+Until now an assembly line has been a single path: one machine, then the
+next. This time the line itself learns a new move. A machine with several
+edges out and no labels on them **fans out**: every machine those edges
+lead to runs, at the same time. The branches **fan in** where they meet:
+each branch's one edge leads to the same machine, which runs once all of
+them have finished, and is given what each of them answered and nothing
+else. The factory refuses a line whose branches do not meet, and a
+branch that fails, by crashing or by answering with no result, stops the
+run.
 
-- **The assembly lines move into the target.** A target holds its
-  product and, in `.assembly-lines/`, the lines that build it: a folder
-  each, named for the line, holding its `assembly-line.dot` and its
-  machines in `machines/`. Each line has its own machines, so two lines
-  can each have a doer, configured differently. Move your line folder
-  from homework 4 into `tetris/tetris-005/.assembly-lines/` (or whichever
-  target you choose).
-- **Each execution is a named run, kept on its line.** You name the run,
-  and the first time you start it you give it one of the target's lines
-  and a seed. The run remembers both. It lives in its line's folder, in
-  `runs/<name>/`, so you always say which target it is in: its target and
-  its name are enough to find it. Its plan is `plan.md` there. To resume
-  your existing game, move its `.factory/plan.md` into the run's folder;
-  a run now owns that plan. Or start with a fresh target.
-- **The run's folder is committed.** The factory commits it in commits
-  of its own, never with the work, so a run's plan and record stay in
-  Git with what it built. A machine's login never is: when you move or
-  copy a line, its machines' logins come with it, and Git still ignores
-  them.
+That is all the factory learns. What you fan out to is up to the line.
+The course's example is **the three big brains**: the doer's work fans
+out to three reviewers, the same job on three different providers'
+models, and a synthesiser reads their reports and decides.
 
-```text
-tetris/tetris-005/
-  .assembly-lines/
-    careful/
-      assembly-line.dot
-      machines/
-        planner/    AGENTS.md, its configuration and its login
-        doer/
-        validator/
-      runs/
-        tetris/
-          plan.md
-          ...       whatever the machines keep for the run
-    quick/
-      assembly-line.dot
-      machines/
-        planner/
-        doer/
-      runs/
-  src/ ...          the product
+```dot
+doer -> reviewer_1
+doer -> reviewer_2
+doer -> reviewer_3
+reviewer_1 -> synthesiser
+reviewer_2 -> synthesiser
+reviewer_3 -> synthesiser
+synthesiser -> doer     [label="not satisfied"]
+synthesiser -> planner  [label="satisfied"]
 ```
 
-The seed can be anywhere: it is the run's input, not part of it. The run's
-folder is where the run's own things go. Tell your machines, in their
-`AGENTS.md`, to keep anything they make for the run there: notes,
-artifacts, logs. The factory tells each machine where the folder is.
+The reviewers being alike is the three big brains' choice, not something
+fanning out needs: each branch is run as that machine would be run
+anywhere, with its own prompt.
 
-Once the route is data, a target can hold more than one line. Write a second
-one — the same line without the validator will do — and have each run say
-which line it runs.
+The three reviewers assess and report; they do not
+decide. The synthesiser decides, and the line routes on its result, as it
+did on the validator's.
 
-Starting or resuming a run is an **invocation** of that same run. Its name,
-settings and plan persist across invocations.
+## Checks that see machines at work
 
-## The commands you'll end up with
+Some examples need a machine caught part-way through its work: three
+reviewers working at the same time, say.
 
-The exact shape is your choice. Run from the repository root, with
-`bin/factory` linked to your entry point:
-
-```sh
-# a new run: its target, its line and its seed
-$ bin/factory --run tetris --target tetris/tetris-005 --line careful --seed tetris/spec.md
-
-# after that, its name and its target are enough
-$ bin/factory --run tetris --target tetris/tetris-005
-
-# a second target: write snake/spec.md describing Snake first
-# copy a line into it, machines included, but no runs
-$ mkdir -p snake/snake1/.assembly-lines
-$ cp -r tetris/tetris-005/.assembly-lines/quick snake/snake1/.assembly-lines/
-$ rm -rf snake/snake1/.assembly-lines/quick/runs
-$ bin/factory --run snake --target snake/snake1 --line quick --seed snake/spec.md
-```
-
-The factory should build whatever the new seed describes, without disturbing
-the first run.
-
-The checks still run against a copy of your factory, which now keeps
-nothing of its own about runs. The copy builds in separate targets, each
-holding its own lines, their machines and their runs.
+When using test doubles, it would be good to set their state manually
+in the test, instead of running something that has a sleep or other runtime.
+It saves you from potential race conditions.
