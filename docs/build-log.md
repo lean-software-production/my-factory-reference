@@ -704,3 +704,63 @@ None in the tutorial or the starter. Things to note:
   reviewer_2" drop the "the" that the validator's and doer's versions have.
   The factory says "the reviewer_2" as it says "the validator", and those
   two steps accept either.
+
+### Fix round after review
+
+The `homework-006` tag predates this fix. The review found two things.
+
+- **pi's tool commands escaped the kill.** pi's bash tool starts each
+  command detached, in a session of its own, so killing pi's process group
+  never reached it. pi kills those commands itself on SIGTERM or SIGHUP, but
+  the factory only ever sent SIGKILL, so a stopped reviewer's running
+  `npm test` was orphaned. Now a machine asked to stop gets SIGTERM to its
+  group and 3 seconds to clean up. Then Go kills the harness, and whatever
+  is still in its group gets SIGTERM, 3 more seconds, then SIGKILL. A
+  machine that answered with nothing left in its group costs no wait. New
+  tests: a pi-like harness (a `setsid` child that it kills on TERM, with
+  SIGKILL as pi does) is stopped with its child gone, both as a failed
+  branch's sibling and when the factory is stopped. A harness deaf to
+  SIGTERM is killed after the grace period. Mutations: SIGKILL instead of
+  SIGTERM, and no final SIGKILL, each failed those tests. One limit
+  remains: a server started by a tool command that has already returned is
+  untracked by pi and in a session of its own. Neither pi nor the factory
+  can reach it, as before this homework.
+- **`nohup` and background runs stopped on a hangup or Ctrl-C.** Asking Go
+  to catch a signal re-enables one the factory was started with ignored. Now
+  the factory catches only the signals of SIGINT, SIGTERM and SIGHUP that it
+  wasn't started ignoring. With all three ignored it catches none, because
+  asking for no signal in particular would catch every signal.
+  `TestAHangupStopsARunUnlessHangupsAreIgnored` starts the factory with
+  SIGHUP ignored and sends it one: the planner carries on and the run ends
+  well. Started normally, the same SIGHUP stops the factory and its planner.
+  Mutation: always catching the signals failed the first case.
+
+How Ctrl-C behaves now, compared with homework 5:
+
+- **Homework 5:** pi was in the factory's process group, so Ctrl-C reached
+  both. The factory died at once, without committing the run's folder.
+  pi died of the SIGINT, which it doesn't handle, so its detached tool
+  commands were orphaned.
+- **Now:** machines are in groups of their own, so Ctrl-C (or a closed
+  terminal, or SIGTERM) reaches only the factory. The factory stops each
+  machine running as above (pi kills its tool commands), commits the run's
+  folder ("Keep what the tetris run made"), and exits 1 with "the doer (pi)
+  was stopped". Started with `nohup` or as a background job with the
+  signals ignored, the factory behaves as it did in homework 5: the run
+  carries on, and its machines, which inherit the ignored signals, do too.
+
+While writing the tests, two flaky passes turned up. Both were in the tests
+themselves, not the factory. One was a check-then-read race on `/proc`: a
+zombie reaped between the two calls counted as alive. The other was the
+`sh` harness losing a TERM that reached its forked child before exec.
+After fixing them, 48 race-built runs of `cmd/factory`, 8 at a time, all
+passed, with nothing left running. Default suite 70/70; `go test -race
+./cmd/factory` passes.
+
+The whole suite race-built, `cd factory && GOFLAGS=-race go test ./...
+-count=1 -timeout 40m`, passed with no data race: `cmd/factory` in 11.6s and
+`steps` in 648s, 23:39 to 23:50 (`logs/006-fix1-race-full.log`).
+"Reviewers that look at testability" on real pi passed again in 4m 58s
+(`logs/006-fix1-real-fan-out.log`). It went three attempts, as before.
+The new kill path only changes how a machine is stopped, not how it
+finishes, so the other real-agent examples were not rerun.

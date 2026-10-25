@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -61,6 +62,30 @@ while [ "$(cat "$FANOUT_STATE/begun" 2>/dev/null | wc -l)" -lt 2 ]; do sleep 0.0
 `
 	proseHarness = waitForTheSlowOnes + `echo "I looked at the work and it seems fine."
 `
+	// piLikeHarness runs its work as pi's bash tool does, detached in a
+	// session of its own, out of reach of its process group, and kills it
+	// when it is told to stop with SIGTERM or SIGHUP, with SIGKILL, as pi
+	// does.
+	piLikeHarness = `#!/bin/sh
+stopping=
+trap 'stopping=yes' TERM HUP
+setsid sleep 300 &
+child=$!
+echo $child >> "$FANOUT_STATE/pids"
+echo begun >> "$FANOUT_STATE/begun"
+while [ -z "$stopping" ]; do wait; done
+kill -9 $child
+exit 143
+`
+	// stubbornHarness, and the child it starts, ignore SIGTERM.
+	stubbornHarness = `#!/bin/sh
+trap '' TERM
+echo $$ >> "$FANOUT_STATE/pids"
+sleep 300 &
+echo $! >> "$FANOUT_STATE/pids"
+echo begun >> "$FANOUT_STATE/begun"
+wait
+`
 	leavesAChildHarness = `#!/bin/sh
 sleep 300 > /dev/null 2>&1 &
 echo $! >> "$FANOUT_STATE/pids"
@@ -69,6 +94,7 @@ echo '{"satisfied": true}'
 )
 
 func TestABranchThatFailsStopsTheOthers(t *testing.T) {
+	needSetsid(t)
 	for name, failing := range map[string]string{
 		"answers in prose": proseHarness,
 		"cannot be run":    "",
@@ -86,10 +112,12 @@ func TestABranchThatFailsStopsTheOthers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// c works the way pi does: what it runs is beyond its process
+			// group, and it cleans up when it is asked to stop.
 			r := &run{line: line, machines: map[string]machine{
 				"a": harnessed(t, "a", slowHarness),
 				"b": b,
-				"c": harnessed(t, "c", slowHarness),
+				"c": harnessed(t, "c", piLikeHarness),
 			}, folder: runFolder{target: t.TempDir()}}
 			goroutines := runtime.NumGoroutine()
 
@@ -112,28 +140,44 @@ func TestABranchThatFailsStopsTheOthers(t *testing.T) {
 }
 
 // Stopping the factory stops the machine it is running, and whatever the
-// machine started.
+// machine started, in its process group or, for a harness that cleans up
+// when asked to stop as pi does, beyond it. One that won't stop when asked
+// is killed.
 func TestStoppingTheFactoryStopsItsMachine(t *testing.T) {
-	state := t.TempDir()
-	t.Setenv("FANOUT_STATE", state)
-	m := harnessed(t, "slow", slowHarness)
-	ctx, stop := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		_, err := m.run(ctx, t.TempDir(), "do it")
-		done <- err
-	}()
-	waitForFile(t, filepath.Join(state, "begun"))
-	stop()
-	select {
-	case err := <-done:
-		if err == nil || !strings.Contains(err.Error(), "was stopped") {
-			t.Errorf("a stopped machine returned %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("the machine was still running 10s after the factory stopped it")
+	needSetsid(t)
+	for name, script := range map[string]string{"its group": slowHarness, "like pi": piLikeHarness, "deaf to SIGTERM": stubbornHarness} {
+		t.Run(name, func(t *testing.T) {
+			state := t.TempDir()
+			t.Setenv("FANOUT_STATE", state)
+			m := harnessed(t, "slow", script)
+			ctx, stop := context.WithCancel(context.Background())
+			done := make(chan error, 1)
+			go func() {
+				_, err := m.run(ctx, t.TempDir(), "do it")
+				done <- err
+			}()
+			waitForFile(t, filepath.Join(state, "begun"))
+			stop()
+			select {
+			case err := <-done:
+				if err == nil || !strings.Contains(err.Error(), "was stopped") {
+					t.Errorf("a stopped machine returned %v", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the machine was still running 10s after the factory stopped it")
+			}
+			noneRunning(t, state)
+		})
 	}
-	noneRunning(t, state)
+}
+
+// needSetsid skips a test whose harness needs setsid, which not every
+// system has (macOS doesn't).
+func needSetsid(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("setsid is not installed")
+	}
 }
 
 // A machine that answers leaves nothing running, and what it left running
@@ -207,24 +251,29 @@ func noneRunning(t *testing.T, state string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// A killed process another parent has yet to reap is gone too.
-		gone := func() bool { return syscall.Kill(pid, 0) != nil || zombie(pid) }
-		for deadline := time.Now().Add(2 * time.Second); !gone() && time.Now().Before(deadline); {
+		for deadline := time.Now().Add(2 * time.Second); !processGone(pid) && time.Now().Before(deadline); {
 			time.Sleep(10 * time.Millisecond)
 		}
-		if !gone() {
+		if !processGone(pid) {
+			ps, _ := exec.Command("ps", "-o", "pid,ppid,pgid,sid,stat,args", "-p", strconv.Itoa(pid)).CombinedOutput()
 			syscall.Kill(pid, syscall.SIGKILL)
-			t.Errorf("process %d was still running", pid)
+			t.Errorf("process %d was still running:\n%s", pid, ps)
 		}
 	}
 }
 
-// zombie says whether the process has exited and not been reaped, where
-// the system says (Linux's /proc).
-func zombie(pid int) bool {
+// processGone says whether the process has gone. One that has exited and
+// that another parent has yet to reap has gone too, where the system says
+// so (Linux's /proc); and so has one /proc no longer lists, though a signal
+// reached it a moment ago.
+func processGone(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return true
+	}
 	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
 	if err != nil {
-		return false
+		_, noProc := os.Stat("/proc/self")
+		return noProc == nil
 	}
 	_, after, _ := strings.Cut(string(stat), ") ")
 	return strings.HasPrefix(after, "Z")

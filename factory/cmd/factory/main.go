@@ -37,13 +37,30 @@ func main() {
 		os.Exit(2)
 	}
 
-	// Interrupted, or its terminal closed, the factory stops the machines
-	// running before it stops itself.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	ctx, stop := stoppedBySignals()
 	defer stop()
 	if err := invocation.execute(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "factory:", err)
 		stop()
 		os.Exit(1)
 	}
+}
+
+// stoppedBySignals is a context that is done when the factory is
+// interrupted, terminated or its terminal closes, so that it stops the
+// machines running before it stops itself. A signal the factory was started
+// with ignored stays ignored: run with nohup, or in the background from a
+// script, it carries on as it always did.
+func stoppedBySignals() (context.Context, context.CancelFunc) {
+	var watched []os.Signal
+	for _, sig := range []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP} {
+		if !signal.Ignored(sig) {
+			watched = append(watched, sig)
+		}
+	}
+	if len(watched) == 0 {
+		// Notified of no signal in particular, a context would be done on any.
+		return context.WithCancel(context.Background())
+	}
+	return signal.NotifyContext(context.Background(), watched...)
 }

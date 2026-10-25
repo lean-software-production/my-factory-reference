@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // A machine does one kind of job for the factory: the planner keeps the
@@ -126,10 +127,10 @@ func (m machine) command(ctx context.Context, dir, prompt string) *exec.Cmd {
 //
 // The harness runs in a process group of its own, with whatever it starts.
 // When ctx is done, because another branch failed or the factory was
-// stopped, the whole group is killed; and once the harness has answered,
-// anything it left running in the group, such as a server it started, is
-// killed too. No machine outlives its call. Its answer goes to a file, not
-// a pipe, so that nothing it leaves running can hold the call open.
+// stopped, the harness is stopped; and once it has answered, anything it
+// left running in its group, such as a server it started, is stopped too.
+// No machine outlives its call. Its answer goes to a file, not a pipe, so
+// that nothing it leaves running can hold the call open.
 func (m machine) run(ctx context.Context, dir, prompt string) (string, error) {
 	out, err := os.CreateTemp("", "factory-answer-")
 	if err != nil {
@@ -141,12 +142,17 @@ func (m machine) run(ctx context.Context, dir, prompt string) (string, error) {
 	cmd := m.command(ctx, dir, prompt)
 	cmd.Stdout, cmd.Stderr = out, os.Stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return killGroup(cmd.Process) }
+	// Asked to stop, the harness gets SIGTERM, and a while to clean up: pi
+	// runs its tools' commands in sessions of their own, out of reach of
+	// its group, and kills them itself on SIGTERM. A harness still running
+	// after that is killed.
+	cmd.Cancel = func() error { return signalGroup(cmd.Process, syscall.SIGTERM) }
+	cmd.WaitDelay = stopGrace
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("could not run the %s (%s): %v", m.name, m.harness, err)
 	}
 	err = cmd.Wait()
-	killGroup(cmd.Process)
+	stopGroup(cmd.Process)
 	answer, readErr := os.ReadFile(out.Name())
 	if ctx.Err() != nil {
 		return "", fmt.Errorf("the %s (%s) was stopped: %v", m.name, m.harness, context.Cause(ctx))
@@ -157,9 +163,28 @@ func (m machine) run(ctx context.Context, dir, prompt string) (string, error) {
 	return string(answer), readErr
 }
 
-// killGroup kills the process group the process leads.
-func killGroup(p *os.Process) error {
-	err := syscall.Kill(-p.Pid, syscall.SIGKILL)
+// stopGrace is how long what a machine runs is given to stop when asked,
+// before it is killed.
+const stopGrace = 3 * time.Second
+
+// stopGroup stops whatever is still running in the process group the
+// process led: SIGTERM, then, for anything still there after stopGrace,
+// SIGKILL.
+func stopGroup(p *os.Process) {
+	if signalGroup(p, syscall.SIGTERM) != nil {
+		return // nothing is left in the group
+	}
+	for deadline := time.Now().Add(stopGrace); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if signalGroup(p, 0) != nil {
+			return
+		}
+	}
+	signalGroup(p, syscall.SIGKILL)
+}
+
+// signalGroup sends the signal to the process group the process leads.
+func signalGroup(p *os.Process, sig syscall.Signal) error {
+	err := syscall.Kill(-p.Pid, sig)
 	if errors.Is(err, syscall.ESRCH) {
 		return os.ErrProcessDone
 	}
