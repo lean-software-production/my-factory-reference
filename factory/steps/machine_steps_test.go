@@ -260,14 +260,17 @@ func (w *world) saysInAGENTSmdOn(lineDir, role, words string) error {
 var lensLine = regexp.MustCompile(`(?m)^(Look at the work through one lens only: ).*$`)
 
 // setLens changes the lens the validator's AGENTS.md names.
-func (w *world) setLens(lens string) error {
-	path := filepath.Join(w.machineDir("validator"), "AGENTS.md")
+func (w *world) setLens(lens string) error { return w.setLensOf("validator", lens) }
+
+// setLensOf changes the lens the machine's AGENTS.md names.
+func (w *world) setLensOf(machine, lens string) error {
+	path := filepath.Join(w.machineDir(machine), "AGENTS.md")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	if !lensLine.Match(raw) {
-		return fmt.Errorf("the validator's AGENTS.md names no lens on a line like %q", lensLine)
+		return fmt.Errorf("the %s's AGENTS.md names no lens on a line like %q", machine, lensLine)
 	}
 	return os.WriteFile(path, lensLine.ReplaceAll(raw, []byte("${1}"+lens+".")), 0o644)
 }

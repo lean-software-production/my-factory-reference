@@ -1,13 +1,15 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // A machine does one kind of job for the factory: the planner keeps the
@@ -109,8 +111,8 @@ func (m machine) checkSignIn() error {
 // called the way pi is: pointed at the machine's folder, given the machine's
 // AGENTS.md as instructions, and stopped from reading the instruction files
 // around dir and the skills of whoever is running the factory.
-func (m machine) command(dir, prompt string) *exec.Cmd {
-	cmd := exec.Command(m.harness, "-p",
+func (m machine) command(ctx context.Context, dir, prompt string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, m.harness, "-p",
 		"--no-context-files", "--no-skills",
 		"--model", m.model,
 		"--append-system-prompt", filepath.Join(m.dir, "AGENTS.md"),
@@ -121,16 +123,45 @@ func (m machine) command(dir, prompt string) *exec.Cmd {
 }
 
 // run calls the machine's harness in dir and returns what it answered.
-func (m machine) run(dir, prompt string) (string, error) {
-	cmd := m.command(dir, prompt)
-	cmd.Stderr = os.Stderr
-	var out bytes.Buffer
-	cmd.Stdout = &out
+//
+// The harness runs in a process group of its own, with whatever it starts.
+// When ctx is done, because another branch failed or the factory was
+// stopped, the whole group is killed; and once the harness has answered,
+// anything it left running in the group, such as a server it started, is
+// killed too. No machine outlives its call. Its answer goes to a file, not
+// a pipe, so that nothing it leaves running can hold the call open.
+func (m machine) run(ctx context.Context, dir, prompt string) (string, error) {
+	out, err := os.CreateTemp("", "factory-answer-")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(out.Name())
+	defer out.Close()
+
+	cmd := m.command(ctx, dir, prompt)
+	cmd.Stdout, cmd.Stderr = out, os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return killGroup(cmd.Process) }
 	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("could not run the %s (%s): %v", m.name, m.harness, err)
 	}
-	if err := cmd.Wait(); err != nil {
-		return "", fmt.Errorf("the %s (%s) failed (%v):\n%s", m.name, m.harness, err, out.String())
+	err = cmd.Wait()
+	killGroup(cmd.Process)
+	answer, readErr := os.ReadFile(out.Name())
+	if ctx.Err() != nil {
+		return "", fmt.Errorf("the %s (%s) was stopped: %v", m.name, m.harness, context.Cause(ctx))
 	}
-	return out.String(), nil
+	if err != nil {
+		return "", fmt.Errorf("the %s (%s) failed (%v):\n%s", m.name, m.harness, err, answer)
+	}
+	return string(answer), readErr
+}
+
+// killGroup kills the process group the process leads.
+func killGroup(p *os.Process) error {
+	err := syscall.Kill(-p.Pid, syscall.SIGKILL)
+	if errors.Is(err, syscall.ESRCH) {
+		return os.ErrProcessDone
+	}
+	return err
 }

@@ -79,3 +79,35 @@ func TestPlannersKeepAnExistingPlansTasks(t *testing.T) {
 		}
 	}
 }
+
+// The three big brains' reviewers do the same job on different models: their
+// folders are alike but for the model each names, so each is given the same
+// instructions and the same prompt.
+func TestTheThreeBigBrainsAreAlikeButForTheirModels(t *testing.T) {
+	machines := filepath.Join("..", "..", "..", "tetris", "tetris-005", ".assembly-lines", "three-big-brains", "machines")
+	read := func(reviewer, file string) string {
+		raw, err := os.ReadFile(filepath.Join(machines, reviewer, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	instructions := read("reviewer_1", "AGENTS.md")
+	models := map[string]bool{}
+	for _, reviewer := range []string{"reviewer_1", "reviewer_2", "reviewer_3"} {
+		if read(reviewer, "AGENTS.md") != instructions {
+			t.Errorf("%s's AGENTS.md is not reviewer_1's", reviewer)
+		}
+		m, err := loadMachine(reviewer, filepath.Join(machines, reviewer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		models[m.model] = true
+		if m.harness != "pi" {
+			t.Errorf("%s runs on %s", reviewer, m.harness)
+		}
+	}
+	if len(models) != 3 {
+		t.Errorf("the reviewers run on %d models, not three: %v", len(models), models)
+	}
+}

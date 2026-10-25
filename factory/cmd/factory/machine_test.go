@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"slices"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 // whether the real pi would find any, so this checks how it is called.
 func TestHarnessIsCalledOnTheMachinesConfigurationOnly(t *testing.T) {
 	m := machine{name: "doer", dir: "/factory/machines/doer", harness: "pi", model: "openai-codex/gpt-6-sol"}
-	cmd := m.command("/work/target", "do it")
+	cmd := m.command(context.Background(), "/work/target", "do it")
 
 	if cmd.Dir != "/work/target" {
 		t.Errorf("it runs in %s, not in the target", cmd.Dir)

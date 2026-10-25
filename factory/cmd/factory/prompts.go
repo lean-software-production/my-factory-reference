@@ -67,6 +67,26 @@ func (b briefing) String() string {
 	return prompt.String()
 }
 
+// meetingBriefing is what the factory says to the machine where the
+// branches of a fan out meet: what each branch answered, and nothing else.
+type meetingBriefing struct {
+	branches []answer
+	fields   []field
+}
+
+func (b meetingBriefing) String() string {
+	var names, results []string
+	for _, a := range b.branches {
+		names = append(names, a.machine)
+		results = append(results, a.machine+": "+a.result)
+	}
+	var prompt strings.Builder
+	fmt.Fprintf(&prompt, "The machines before you on the line, %s, ran at the same time and answered with these results:\n\n%s\n",
+		strings.Join(names, ", "), strings.Join(results, "\n"))
+	prompt.WriteString("\n" + resultRequest(b.fields))
+	return prompt.String()
+}
+
 // resultRequest asks for the result: one line of JSON with the fields.
 func resultRequest(fields []field) string {
 	var asks, example []string

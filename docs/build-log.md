@@ -534,3 +534,173 @@ flake above came about: it now says to keep an existing plan's tasks as they
 are, in order, and only mark done the tasks whose work is committed
 (`TestPlannersKeepAnExistingPlansTasks`). Default suite 55/55 plus the unit
 tests; real-agent suite 8 of 8 again, 21:20 to 21:52 (**31m 13s**).
+
+## Homework 006: Fan out
+
+- **Adopted:** iteration `006-fan-out` from the tutorial's `main`, at 21:54.
+- **Red:** with the adopted spec and homework 5's factory, 70 examples ran
+  (the 9 `@real-agent` ones left out): 55 passed and 15 were undefined (821
+  steps: 687 passed, 77 undefined, 57 skipped). The 15 are the 12 examples
+  of the new `fan-out.feature` and the 3 new ones in `assembly-line.feature`.
+  The only other change to the features is a sentence in `machine.feature`'s
+  rule text. The failures were all in what the README calls new. No
+  step-drift problem in the tutorial and no regression.
+- **The three big brains:** a third line in the first target,
+  `tetris/tetris-005/.assembly-lines/three-big-brains/`, with the README's
+  graph. Its planner and doer are the `careful` line's (the doer's heading
+  about findings now names the synthesiser). `reviewer_1` to `reviewer_3`
+  have the same `AGENTS.md` (lens: testability) and differ only in their
+  model: `openai-codex/gpt-6-sol`, `gpt-6-luna` and `gpt-6-astra`. The
+  course means three providers' models, and a student with three
+  providers' logins would use three providers. Real runs on this box use only
+  the `openai-codex` login (David's decision), and the features check only
+  "different models" and "the same prompt". The `synthesiser` (gpt-6-sol)
+  reads the three reports and decides. Every machine has its own copy of the
+  login, which Git ignores.
+- **What changed in the factory:**
+  - A machine with more than one edge out and no labels fans out. Before any
+    machine runs, the line is refused ("the branches from doer do not meet")
+    unless every branch has one unlabelled edge out, and all those edges lead
+    to the same machine.
+  - The branches run at the same time, one goroutine each, and the factory
+    waits for all of them. Each branch gets the same briefing as any machine
+    (seed, plan, run's folder, the doer's result, the uncommitted changes
+    listed once, before any branch starts) and is asked for its own result.
+    Each branch counts towards the attempt limit like any machine.
+  - The machine where the branches meet is told only what each branch
+    answered, under its name, and is asked for the fields its edges route on.
+    The machine after it is told only the meeting machine's result, so the
+    doer gets the synthesiser's findings and not the reviews.
+  - A branch that fails (cannot be run, crashes, or answers with no result)
+    cancels the others' context. The factory waits for them to die, names the
+    branch ("a branch from doer failed, so the factory stopped the others:
+    could not read the reviewer_2's result"), runs nothing after them and
+    commits no work. The run's folder is still committed at the end, as
+    before.
+  - Every machine now runs in a process group of its own. The group is killed
+    when the call's context is cancelled, and again once the machine has
+    answered, so nothing a machine started outlives its call. Its answer goes
+    to a temporary file, not a pipe, so a process it leaves behind can't hold
+    the call open. Because a machine in its own group no longer gets the
+    terminal's Ctrl-C, the factory now handles SIGINT, SIGTERM and SIGHUP
+    itself and stops the machines running before it exits. Homework 7 makes
+    stopping a run a feature; this is only what concurrency needed.
+  - The factory now prints each result with its machine's name,
+    `reviewer_2: {...}`, because three branches' results arrive in any order.
+    They are printed one at a time.
+- **Doubles:** the agent double can now run as several processes at once.
+  Calls take turns, under a `flock` on the double's folder, at numbering
+  themselves and writing `calls.log`, the prompts and the sign-ins.
+  `calls.log` also records the machine's folder, so `reviewer_2` can be told
+  apart from the other reviewers (all three play "# Reviewer"). It plays a
+  reviewer (satisfied unless told otherwise, or "report <n>" in the order
+  they report) and the synthesiser (like the validator). The synthesiser is
+  the one machine the double doesn't expect to be told the plan or the run's
+  folder. "No reviewer finishes until all three have begun" makes each
+  reviewer wait until three reviewer calls have been logged for its attempt.
+  It gives up if the factory that called it goes away, so a factory that runs
+  the branches one by one ends at the suite's 30s limit, not never. Each call
+  notes its process in `pids.log`. "The factory has stopped" now also checks
+  that none of those processes is still alive.
+- **Steps:** "the line has the three big brains" copies the four machines
+  from the student's `three-big-brains` line (only what Git keeps, no runs),
+  with the double as their harness and a stand-in login. "The three big
+  brains has replaced the validator" does that, removes the validator's
+  folder and edits the graph as `STEPS.md` says. "It was not given ..." now
+  checks every call to the machine the previous step was about, not only its
+  latest. "Could not read/run reviewer_2" accept the factory's "the
+  reviewer_2". `FACTORY_FEATURES` (feature files or `file:line`) runs part of
+  the suite, used to work one example at a time.
+- **Green:** 70 of 70 examples and 821 steps pass in about 65s, at 22:37.
+- **Concurrency checks:** `go test -race ./cmd/factory/` passes, including
+  the new `fanout_test.go`. A branch that answers in prose while the other
+  two are at work (each with a child process), or that can't be run, stops
+  the fan out within the 10s limit. Every process and child is gone
+  afterwards, and the goroutine count is back where it was. Cancelling a
+  running machine kills it and its child. A machine that leaves a background
+  process running answers at once, and the process is killed. The fan-out
+  and assembly-line features also pass with the factory and doubles built
+  with `-race` (`GOFLAGS=-race`; log `logs/006-race-fan-out.log`, 111s).
+  The whole suite race-built takes over `go test`'s 10 minutes.
+- **Mutation checks:** each of these made tests fail: running the branches
+  one after another ("Reviewers that wait for each other", at the 30s limit);
+  not checking that branches meet (the 2 refusal examples); giving the
+  meeting machine the ordinary briefing ("What the synthesiser is given",
+  "The reports disagree"); not cancelling the others when a branch fails (the
+  unit test's 10s limit); not giving machines a process group of their own
+  (the three process unit tests); not killing the group after a machine
+  answers (`TestAMachineLeavesNothingRunning`). One mutation changed nothing:
+  listing the uncommitted changes separately for each branch rather than once
+  for all. The doubles' reviewers change nothing, so their lists are the same
+  either way.
+- **Unit tests the doubles can't replace:** `fanout_test.go` above;
+  `TestAFanOutIsReadFromTheLine`;
+  `TestTheThreeBigBrainsAreAlikeButForTheirModels` (the student's reviewers
+  share one `AGENTS.md` and name three models).
+- **Time:** about 45 minutes from the fetch to a green suite (21:54 to
+  22:37), including the unit tests and mutation checks. The examples went one
+  at a time with `FACTORY_FEATURES`, but most of the fan-out examples passed
+  as soon as their steps were defined: the fan out was written concurrent from
+  the first example (the controller's decision that fan out means
+  concurrency), so "Reviewers that wait for each other" was never red. The
+  sequential mutation above shows it would have been.
+- **README commands:** the README has none to run. Through `bin/factory`,
+  from the repository root, I ran the `three-big-brains` line with the agent
+  double as `pi`, on a copy of the line in a scratch repository: two tasks,
+  the synthesiser rejecting the first attempt. Every attempt's three reviews
+  arrived in a different order (reviewer_3, 2, 1, then 2, 1, 3, then
+  1, 3, 2), and the run committed `alpha` and `beta` and finished. The
+  README's "Once your suite passes" section and bonus round don't exist this
+  time.
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 75m -v`,
+with the pi wrapper first on the `PATH`, ran from 22:38 to 23:14 (**35m 16s**).
+I gave it 75m rather than 60m because a fan out makes more agent calls; it
+didn't need it. **8 of 9 passed:**
+
+- "Reviewers that look at testability" (new): 4m 58s. The real line went
+  from the planner (which kept the one flawed task) to the doer, then to
+  three reviewers on gpt-6-sol, gpt-6-luna and gpt-6-astra at the same time,
+  then to the synthesiser. That happened three times. The first time all
+  three reviewers found the work untestable, each in its own words
+  (reviewer_3 gave its findings as objects with a `file`, not as strings),
+  and the synthesiser merged them into one finding. The second time two
+  reviewers were satisfied and one wasn't, and the synthesiser sided with the
+  one, on a real point: the display's 24-row limit was untested. The third
+  time all were satisfied, and the planner finished the plan. The judge
+  agreed that the reviewers' findings were about testability.
+- The others: "Instructions above the target are not the machine's" 4m 42s;
+  "The assembly line is given a seed and nothing else" 4m 01s; "The plan
+  comes from the seed" 5m 08s; "A validator that looks at testability"
+  3m 04s; "...at something else" 2m 56s; "The first task's work is
+  untestable" 2m 44s; "A finding on the first task" 3m 16s.
+- "A Tetris with different details" (homework 1's example) failed at "its
+  board is 8 columns wide". The game was right: it was titled "TETRIS (8
+  columns)" and drew each cell as two characters, `@ ` (a glyph, then a
+  space), 16 characters inside the walls. The suite's board reader decides
+  cells are one character wide if any block run inside the board has an odd
+  length, and a lone `@` followed by its blank half is such a run. So it
+  counted 16 columns. This is a limit of a homework 1 step, not of the
+  factory or of fan out, and I left it for the review rather than tune the
+  heuristic to one board. Run again by itself, the example passed (3m 25s).
+  Logs: `logs/006-real-agent.log` and
+  `logs/006-real-different-details-rerun.log`.
+- No machine process was left running after the suite.
+- Tokens weren't summed: the sessions are in the examples' temporary folders.
+
+### Problems found
+
+None in the tutorial or the starter. Things to note:
+
+- The spec leaves open where the three big brains' machines come from. I
+  read "the line has the three big brains" (STEPS.md: four machines
+  "configured alike but for their models") as copies of the student's own,
+  kept on a `three-big-brains` line in the first target.
+- "Given only their results and nothing else" I took literally: the
+  synthesiser isn't told the seed, the plan or the run's folder.
+- The words "could not read reviewer_2's result" and "could not run
+  reviewer_2" drop the "the" that the validator's and doer's versions have.
+  The factory says "the reviewer_2" as it says "the validator", and those
+  two steps accept either.

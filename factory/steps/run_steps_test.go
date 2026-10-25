@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/cucumber/godog"
 )
@@ -33,7 +35,7 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		if w.timedOut {
 			return fmt.Errorf("the factory was still running when it was stopped:\n%s", w.output)
 		}
-		return nil
+		return w.noMachineRunning()
 	})
 
 	sc.Step(`^it reports that it could not run the doer$`, func() error {
@@ -113,6 +115,7 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		return nil
 	})
 	sc.Step(`^the validator was given the work for the second task$`, func() error {
+		w.subject = "validator"
 		return w.someCallWasGiven("validator", w.planTasks[1]+".txt")
 	})
 	sc.Step(`^the doer was given the validator's findings$`, func() error {
@@ -122,31 +125,9 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 		w.subject = role
 		return w.wasGiven(role, words)
 	})
-	sc.Step(`^it was not given "([^"]*)"$`, func(words string) error {
-		if w.subject == "" {
-			return fmt.Errorf("no machine has been said to be given anything")
-		}
-		prompt, err := w.lastPrompt(w.subject)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(prompt, words) {
-			return fmt.Errorf("the %s was given %q:\n%s", w.subject, words, prompt)
-		}
-		return nil
-	})
+	sc.Step(`^it was not given "([^"]*)"$`, func(words string) error { return w.subjectNotGiven(words) })
 	sc.Step(`^it was not given the work for the first task$`, func() error {
-		calls, err := w.callsTo("validator")
-		if err != nil {
-			return err
-		}
-		file := w.planTasks[0] + ".txt"
-		for _, c := range calls {
-			if strings.Contains(c.prompt, file) {
-				return fmt.Errorf("the validator was given %s; it was given:\n%s", file, c.prompt)
-			}
-		}
-		return nil
+		return w.subjectNotGiven(w.planTasks[0] + ".txt")
 	})
 	sc.Step(`^the (planner|validator) was asked for a result with the fields? "([^"]*)"(?: and "([^"]*)")?$`,
 		func(role, field, another string) error {
@@ -161,6 +142,49 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 			}
 			return nil
 		})
+}
+
+// subjectNotGiven checks no call to the machine the latest "was given" step
+// was about held the words.
+func (w *world) subjectNotGiven(words string) error {
+	if w.subject == "" {
+		return fmt.Errorf("no machine has been said to be given anything")
+	}
+	calls, err := w.callsTo(w.subject)
+	if err != nil {
+		return err
+	}
+	if len(calls) == 0 {
+		return fmt.Errorf("the %s was never called\n%s", w.subject, w.output)
+	}
+	for _, c := range calls {
+		if strings.Contains(c.prompt, words) {
+			return fmt.Errorf("the %s was given %q:\n%s", w.subject, words, c.prompt)
+		}
+	}
+	return nil
+}
+
+// noMachineRunning checks that none of the machines the factory called is
+// still running: the doubles note the process of each call.
+func (w *world) noMachineRunning() error {
+	raw, err := os.ReadFile(filepath.Join(w.doubleDir, "pids.log"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, line := range strings.Fields(string(raw)) {
+		pid, err := strconv.Atoi(line)
+		if err != nil {
+			return fmt.Errorf("pids.log holds %q", line)
+		}
+		if syscall.Kill(pid, 0) == nil {
+			return fmt.Errorf("a machine the factory called (process %d) is still running\n%s", pid, w.output)
+		}
+	}
+	return nil
 }
 
 // runsRun runs the factory on the run of that name.
@@ -182,7 +206,7 @@ func (w *world) startRun(name string) error {
 	if err := w.runRunToSuccess(r, invocation{}); err != nil {
 		return err
 	}
-	for _, forgotten := range []string{"calls.log", "prompts", "signins", "spy.log"} {
+	for _, forgotten := range []string{"calls.log", "prompts", "signins", "spy.log", "pids.log", "reports.log"} {
 		if err := os.RemoveAll(filepath.Join(w.doubleDir, forgotten)); err != nil {
 			return err
 		}

@@ -9,12 +9,17 @@
 //
 // The factory goes along the line from start, calling each machine it comes
 // to and taking the edge its result names, until the line reaches finish.
+// Where the line fans out, the branches run at the same time, and the
+// machine where they meet is given their results.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 // version is set by the release build with -ldflags "-X main.version=<v>".
@@ -32,8 +37,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := invocation.execute(); err != nil {
+	// Interrupted, or its terminal closed, the factory stops the machines
+	// running before it stops itself.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer stop()
+	if err := invocation.execute(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "factory:", err)
+		stop()
 		os.Exit(1)
 	}
 }

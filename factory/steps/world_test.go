@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,6 +29,13 @@ type behaviour struct {
 	ValidatorNoResult bool     `json:"validator_no_result,omitempty"`
 	Rejects           int      `json:"rejects,omitempty"`
 	Finding           string   `json:"finding,omitempty"`
+
+	ReviewersWait      bool              `json:"reviewers_wait,omitempty"`
+	NumberedReports    bool              `json:"numbered_reports,omitempty"`
+	ReviewerFindings   map[string]string `json:"reviewer_findings,omitempty"`
+	Prose              []string          `json:"prose,omitempty"`
+	SynthesiserRejects int               `json:"synthesiser_rejects,omitempty"`
+	SynthesiserFinding string            `json:"synthesiser_finding,omitempty"`
 }
 
 // A run of the factory that the double plays the agent in is short; one
@@ -245,12 +253,12 @@ func (w *world) runRunToSuccess(r *runSpec, how invocation) error {
 	return nil
 }
 
-// call is one call a double was given: the name it was called by, and the
-// machine it was asked to be.
+// call is one call a double was given: the name it was called by, the
+// machine it was asked to be, and the name of that machine's folder.
 type call struct {
-	name, role string
-	prompt     string // the machine's AGENTS.md, then the prompt
-	signedIn   string // how it signed in: its login, or "api key"
+	name, role, machine string
+	prompt              string // the machine's AGENTS.md, then the prompt
+	signedIn            string // how it signed in: its login, or "api key"
 }
 
 // calls lists the calls the doubles were given, in order.
@@ -265,7 +273,7 @@ func (w *world) calls() ([]call, error) {
 	var calls []call
 	for n, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 		fields := strings.Fields(line)
-		if len(fields) != 2 {
+		if len(fields) != 3 {
 			return nil, fmt.Errorf("calls.log line %d is %q", n+1, line)
 		}
 		prompt, err := os.ReadFile(filepath.Join(w.doubleDir, "prompts", fmt.Sprintf("%d.txt", n+1)))
@@ -276,7 +284,7 @@ func (w *world) calls() ([]call, error) {
 		if err != nil {
 			return nil, err
 		}
-		calls = append(calls, call{fields[0], fields[1], string(prompt), string(signedIn)})
+		calls = append(calls, call{fields[0], fields[1], fields[2], string(prompt), string(signedIn)})
 	}
 	return calls, nil
 }
@@ -287,6 +295,18 @@ func (w *world) callsTo(role string) ([]call, error) {
 	var mine []call
 	for _, c := range calls {
 		if c.role == role {
+			mine = append(mine, c)
+		}
+	}
+	return mine, err
+}
+
+// callsToMachine lists the calls made to the machine in that folder.
+func (w *world) callsToMachine(name string) ([]call, error) {
+	calls, err := w.calls()
+	var mine []call
+	for _, c := range calls {
+		if c.machine == name {
 			mine = append(mine, c)
 		}
 	}
@@ -309,6 +329,15 @@ func (w *world) lastPrompt(role string) (string, error) {
 func (w *world) reports(words string) error {
 	if !strings.Contains(w.output, words) {
 		return fmt.Errorf("expected the factory to report %q, but it said:\n%s", words, w.output)
+	}
+	return nil
+}
+
+// reportsMatching checks the factory's output has words matching the
+// pattern.
+func (w *world) reportsMatching(pattern string) error {
+	if !regexp.MustCompile(pattern).MatchString(w.output) {
+		return fmt.Errorf("expected the factory to report something like %q, but it said:\n%s", pattern, w.output)
 	}
 	return nil
 }
@@ -338,4 +367,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	w.registerRealAgentSteps(sc)
 	w.registerValidationSteps(sc)
 	w.registerMachineSteps(sc)
+	w.registerFanOutSteps(sc)
 }

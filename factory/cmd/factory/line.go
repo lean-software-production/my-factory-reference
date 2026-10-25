@@ -22,6 +22,11 @@ import (
 // "not" and the field's name when it is false. An edge with no label is taken
 // whatever the result.
 //
+// A machine with more than one edge out and no labels on them fans out: the
+// machines those edges lead to are its branches, and run at the same time.
+// Each branch has one edge out, unlabelled, and they all lead to the same
+// machine, where the branches meet.
+//
 // What a machine is for is not in its name but in the line: the planner is
 // the one machine with an edge to finish, the machines it sends work to are
 // the workers, and a machine with a "not" edge can send work back. What each
@@ -144,7 +149,8 @@ func unquote(id string) string {
 
 // check says why the factory cannot run the line, if it cannot: it names a
 // machine the factory does not have, more than one machine has an edge to
-// finish, or some machine on it has no way to finish.
+// finish, the branches of a fan out do not meet, or some machine on it has
+// no way to finish.
 func (l *assemblyLine) check() error {
 	if !slices.Contains(l.nodes, start) {
 		return fmt.Errorf("it has no %s", start)
@@ -165,6 +171,13 @@ func (l *assemblyLine) check() error {
 	}
 	if len(finishers) > 1 {
 		return fmt.Errorf("only one machine may have an edge to %s, the planner, and %s do", finish, strings.Join(finishers, " and "))
+	}
+	for _, node := range l.nodes {
+		if branches := l.branches(node); branches != nil {
+			if _, ok := l.meeting(branches); !ok {
+				return fmt.Errorf("the branches from %s do not meet: each of %s needs one edge out, unlabelled, and they must all lead to the same machine", node, strings.Join(branches, ", "))
+			}
+		}
 	}
 	var stuck []string
 	for _, node := range l.nodes {
@@ -194,6 +207,48 @@ func (l *assemblyLine) reaches(from, to string) bool {
 		}
 	}
 	return false
+}
+
+// edgesFrom are the edges leaving a node, in the order they are written.
+func (l *assemblyLine) edgesFrom(node string) []edge {
+	var out []edge
+	for _, e := range l.edges {
+		if e.from == node {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// branches are the machines a node fans out to, or nil if it does not fan
+// out: it has more than one edge out, and none of them is labelled.
+func (l *assemblyLine) branches(node string) []string {
+	out := l.edgesFrom(node)
+	if len(out) < 2 {
+		return nil
+	}
+	var branches []string
+	for _, e := range out {
+		if strings.TrimSpace(e.label) != "" {
+			return nil
+		}
+		branches = append(branches, e.to)
+	}
+	return branches
+}
+
+// meeting is the machine where the branches meet: each has one edge out,
+// unlabelled, and they all lead to it.
+func (l *assemblyLine) meeting(branches []string) (string, bool) {
+	meet := ""
+	for _, branch := range branches {
+		out := l.edgesFrom(branch)
+		if len(out) != 1 || strings.TrimSpace(out[0].label) != "" || (meet != "" && out[0].to != meet) {
+			return "", false
+		}
+		meet = out[0].to
+	}
+	return meet, meet != ""
 }
 
 // routedFields are the fields of a machine's result that its edges name.

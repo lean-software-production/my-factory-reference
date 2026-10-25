@@ -5,18 +5,25 @@
 //	    --append-system-prompt <AGENTS.md> <prompt>
 //
 // with PI_CODING_AGENT_DIR set to the machine's folder. It plays the machine
-// its instructions describe: the planner, the doer or the validator.
+// its instructions describe: the planner, the doer, the validator, or one of
+// the three big brains, a reviewer or the synthesiser. Several may run at
+// once, as the branches of a fan out do.
 //
 // Like pi, it is given the AGENTS.md named by --append-system-prompt, and
 // signs in with the auth.json in PI_CODING_AGENT_DIR or else with an API key
 // from the environment; with neither it fails, as pi does.
 //
 // It keeps everything in the folder named by DOUBLE_DIR:
-//   - calls.log: one line per call, the name it was called by (pi or agent)
-//     and the machine it played
+//   - calls.log: one line per call, the name it was called by (pi or agent),
+//     the machine it played, and the machine's folder's name
 //   - prompts/<n>.txt: what call n was given: the AGENTS.md, then the prompt
 //   - signins/<n>.txt: how call n signed in: the login it found or "api key"
+//   - pids.log: the process of each call, so a step can tell whether any is
+//     still running
 //   - behaviour.json: what it does, written by the step definitions
+//
+// Calls that run at the same time take turns at writing these, holding a
+// lock on the folder's "lock" file.
 //
 // Like a machine told to keep what it makes for the run in the run's folder,
 // it keeps a note of each call there.
@@ -31,7 +38,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // Behaviour is what the steps tell the double to do.
@@ -54,6 +65,21 @@ type Behaviour struct {
 	Rejects int `json:"rejects,omitempty"`
 	// Finding is what the validator finds wrong when it is not satisfied.
 	Finding string `json:"finding,omitempty"`
+
+	// ReviewersWait has no reviewer finish until all three have begun.
+	ReviewersWait bool `json:"reviewers_wait,omitempty"`
+	// NumberedReports has every reviewer not satisfied, its finding
+	// "report <n>", numbered in the order they report.
+	NumberedReports bool `json:"numbered_reports,omitempty"`
+	// ReviewerFindings has the reviewers in these folders not satisfied, each
+	// with its finding.
+	ReviewerFindings map[string]string `json:"reviewer_findings,omitempty"`
+	// Prose has the machines in these folders answer in prose, with no result.
+	Prose []string `json:"prose,omitempty"`
+	// SynthesiserRejects is how many times, from the start, the synthesiser
+	// is not satisfied; -1 for always. It then finds SynthesiserFinding.
+	SynthesiserRejects int    `json:"synthesiser_rejects,omitempty"`
+	SynthesiserFinding string `json:"synthesiser_finding,omitempty"`
 }
 
 // planPath is where the plan is, as the factory's prompt says: either "The
@@ -83,10 +109,16 @@ func main() {
 	}
 	prompt := os.Args[len(os.Args)-1]
 	role := machineIn(prompt)
-	planPath = planIn(prompt)
-	logCall(dir, role, prompt)
-	signIn(dir)
-	keepNote(role, prompt)
+	machine := filepath.Base(os.Getenv("PI_CODING_AGENT_DIR"))
+	// The synthesiser is given the reviewers' results and nothing else: no
+	// plan and no run's folder. Every other machine is told both.
+	if role != "synthesiser" {
+		planPath = planIn(prompt)
+	}
+	n := logCall(dir, role, machine, prompt)
+	if role != "synthesiser" {
+		keepNote(role, prompt)
+	}
 
 	var b Behaviour
 	raw, err := os.ReadFile(filepath.Join(dir, "behaviour.json"))
@@ -96,6 +128,10 @@ func main() {
 	}
 	if err := json.Unmarshal(raw, &b); err != nil {
 		fail("reading behaviour: %v", err)
+	}
+	if slices.Contains(b.Prose, machine) {
+		fmt.Println("I looked at the work and it seems fine.")
+		return
 	}
 
 	switch role {
@@ -108,10 +144,66 @@ func main() {
 			return
 		}
 		answer(validate(b, dir))
+	case "reviewer":
+		if b.ReviewersWait {
+			waitForTheOtherReviewers(dir, n)
+		}
+		answer(review(b, dir, machine))
+	case "synthesiser":
+		answer(synthesise(b, dir))
 	case "planner":
 		answer(plan(b))
 	default:
 		answer(work(b))
+	}
+}
+
+// A reviewer is satisfied unless it is told otherwise.
+func review(b Behaviour, dir, machine string) map[string]any {
+	if b.NumberedReports {
+		var n int
+		withLock(dir, func() {
+			n = countLines(filepath.Join(dir, "reports.log")) + 1
+			appendLine(filepath.Join(dir, "reports.log"), machine)
+		})
+		return map[string]any{"satisfied": false, "findings": []string{fmt.Sprintf("report %d", n)}}
+	}
+	if finding, ok := b.ReviewerFindings[machine]; ok {
+		return map[string]any{"satisfied": false, "findings": []string{finding}}
+	}
+	return map[string]any{"satisfied": true, "findings": []string{}}
+}
+
+// The synthesiser decides, as the validator does, and reports nothing of
+// what the reviewers found.
+func synthesise(b Behaviour, dir string) map[string]any {
+	if b.SynthesiserRejects < 0 || callsTo(dir, "synthesiser") <= b.SynthesiserRejects {
+		return map[string]any{"satisfied": false, "findings": []string{b.SynthesiserFinding}}
+	}
+	return map[string]any{"satisfied": true, "findings": []string{}}
+}
+
+// The three big brains have three reviewers.
+const reviewers = 3
+
+// waitForTheOtherReviewers holds the reviewer, the nth call, until all three
+// reviewers of its attempt have begun: three reviewer calls for each attempt
+// so far. It stops waiting, and fails, if the run finishes first, which it
+// knows by the factory that called it going away.
+func waitForTheOtherReviewers(dir string, n int) {
+	mine := 0
+	for i, c := range readCalls(dir) {
+		if i < n && c.role == "reviewer" {
+			mine++
+		}
+	}
+	want := (mine + reviewers - 1) / reviewers * reviewers
+	factory := os.Getppid()
+	for callsTo(dir, "reviewer") < want {
+		if os.Getppid() != factory {
+			fail("the run finished before all three reviewers began")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -126,17 +218,32 @@ func validate(b Behaviour, dir string) map[string]any {
 // callsTo counts the calls so far, this one included, to the machine in
 // that role.
 func callsTo(dir, role string) int {
-	raw, err := os.ReadFile(filepath.Join(dir, "calls.log"))
-	if err != nil {
-		fail("%v", err)
-	}
 	n := 0
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.HasSuffix(line, " "+role) {
+	for _, c := range readCalls(dir) {
+		if c.role == role {
 			n++
 		}
 	}
 	return n
+}
+
+type call struct{ name, role, machine string }
+
+// readCalls reads calls.log, taking its turn with the calls writing to it.
+func readCalls(dir string) []call {
+	var raw []byte
+	var err error
+	withLock(dir, func() { raw, err = os.ReadFile(filepath.Join(dir, "calls.log")) })
+	if err != nil {
+		fail("%v", err)
+	}
+	var calls []call
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if fields := strings.Fields(line); len(fields) == 3 {
+			calls = append(calls, call{fields[0], fields[1], fields[2]})
+		}
+	}
+	return calls
 }
 
 // plan, for the planner, writes the plan if there is none. Otherwise it marks
@@ -281,28 +388,74 @@ func machineIn(_ string) string {
 	return "unknown"
 }
 
-// logCall records the call's name and role, and what it was given: the
-// instructions in the AGENTS.md it was pointed at, then the prompt.
-func logCall(dir, role, prompt string) {
-	prompts := filepath.Join(dir, "prompts")
-	if err := os.MkdirAll(prompts, 0o755); err != nil {
-		fail("%v", err)
-	}
-	entries, _ := os.ReadDir(prompts)
-	n := len(entries) + 1
+// logCall records the call: the name it was called by, its role and its
+// machine's folder, what it was given (the instructions in the AGENTS.md it
+// was pointed at, then the prompt), how it signed in and its process. It
+// returns the call's number. A call that cannot sign in fails then, as pi
+// does.
+func logCall(dir, role, machine, prompt string) int {
 	given := prompt
 	if instructions := appendedInstructions(); instructions != "" {
 		given = instructions + "\n---\n" + prompt
 	}
-	if err := os.WriteFile(filepath.Join(prompts, fmt.Sprintf("%d.txt", n)), []byte(given), 0o644); err != nil {
-		fail("%v", err)
+	how := signIn()
+	var n int
+	withLock(dir, func() {
+		for _, sub := range []string{"prompts", "signins"} {
+			if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+				fail("%v", err)
+			}
+		}
+		n = countLines(filepath.Join(dir, "calls.log")) + 1
+		if err := os.WriteFile(filepath.Join(dir, "prompts", fmt.Sprintf("%d.txt", n)), []byte(given), 0o644); err != nil {
+			fail("%v", err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "signins", fmt.Sprintf("%d.txt", n)), []byte(how), 0o644); err != nil {
+			fail("%v", err)
+		}
+		appendLine(filepath.Join(dir, "pids.log"), strconv.Itoa(os.Getpid()))
+		appendLine(filepath.Join(dir, "calls.log"), fmt.Sprintf("%s %s %s", filepath.Base(os.Args[0]), role, machine))
+	})
+	if how == "" {
+		fmt.Fprintln(os.Stderr, "No API key found. Use /login to log into a provider.")
+		os.Exit(1)
 	}
-	log, err := os.OpenFile(filepath.Join(dir, "calls.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	return n
+}
+
+// withLock runs f holding the lock on the double's folder, so that calls
+// running at the same time take turns.
+func withLock(dir string, f func()) {
+	lock, err := os.OpenFile(filepath.Join(dir, "lock"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		fail("%v", err)
 	}
-	defer log.Close()
-	fmt.Fprintln(log, filepath.Base(os.Args[0]), role)
+	defer lock.Close()
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		fail("locking: %v", err)
+	}
+	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	f()
+}
+
+func countLines(path string) int {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		fail("%v", err)
+	}
+	return strings.Count(string(raw), "\n")
+}
+
+func appendLine(path, line string) {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		fail("%v", err)
+	}
+	defer file.Close()
+	fmt.Fprintln(file, line)
 }
 
 // appendedInstructions are the contents of the file named by
@@ -320,27 +473,16 @@ func appendedInstructions() string {
 	return ""
 }
 
-// signIn notes how this call signs in, as pi would: with the login in its
-// configuration folder, else with an API key. With neither it fails.
-func signIn(dir string) {
-	signins := filepath.Join(dir, "signins")
-	if err := os.MkdirAll(signins, 0o755); err != nil {
-		fail("%v", err)
-	}
-	entries, _ := os.ReadDir(signins)
-	how := ""
+// signIn is how this call signs in, as pi would: with the login in its
+// configuration folder, else with an API key; "" with neither.
+func signIn() string {
 	if login, err := os.ReadFile(filepath.Join(os.Getenv("PI_CODING_AGENT_DIR"), "auth.json")); err == nil {
-		how = "login " + strings.TrimSpace(string(login))
-	} else if hasAPIKey() {
-		how = "api key"
+		return "login " + strings.TrimSpace(string(login))
 	}
-	if err := os.WriteFile(filepath.Join(signins, fmt.Sprintf("%d.txt", len(entries)+1)), []byte(how), 0o644); err != nil {
-		fail("%v", err)
+	if hasAPIKey() {
+		return "api key"
 	}
-	if how == "" {
-		fmt.Fprintln(os.Stderr, "No API key found. Use /login to log into a provider.")
-		os.Exit(1)
-	}
+	return ""
 }
 
 func hasAPIKey() bool {

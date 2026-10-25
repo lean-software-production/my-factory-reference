@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cucumber/godog"
@@ -68,17 +69,22 @@ func buildSuite(dir string) error {
 }
 
 // TestFeatures runs ../spec/features. FACTORY_TAGS picks the examples; by
-// default it leaves out the ones that need a real agent.
+// default it leaves out the ones that need a real agent. FACTORY_FEATURES,
+// if set, names the feature files (or file:line) to run instead of them all.
 func TestFeatures(t *testing.T) {
 	tags := os.Getenv("FACTORY_TAGS")
 	if tags == "" {
 		tags = "~@real-agent"
 	}
+	paths := []string{"../spec/features"}
+	if features := os.Getenv("FACTORY_FEATURES"); features != "" {
+		paths = strings.Fields(features)
+	}
 	suite := godog.TestSuite{
 		ScenarioInitializer: InitializeScenario,
 		Options: &godog.Options{
 			Format:   "pretty",
-			Paths:    []string{"../spec/features"},
+			Paths:    paths,
 			Tags:     tags,
 			Strict:   true,
 			TestingT: t,

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -60,14 +61,22 @@ func (w *world) firstAttemptIsUntestable() error {
 }
 
 // validatorFindings are what the validator found wrong, in the latest run.
-func (w *world) validatorFindings() ([]string, error) {
+func (w *world) validatorFindings() ([]string, error) { return w.findingsOf("validator") }
+
+// findingsOf are what the machines in those folders found wrong, in the
+// latest run, as the factory reported their results: "<machine>: <result>".
+func (w *world) findingsOf(machines ...string) ([]string, error) {
 	var found []string
 	for _, line := range strings.Split(w.output, "\n") {
+		machine, said, ok := strings.Cut(strings.TrimSpace(line), ": ")
+		if !ok || !slices.Contains(machines, machine) {
+			continue
+		}
 		var res struct {
 			Satisfied *bool `json:"satisfied"`
 			Findings  []any `json:"findings"`
 		}
-		if json.Unmarshal([]byte(strings.TrimSpace(line)), &res) != nil || res.Satisfied == nil {
+		if json.Unmarshal([]byte(said), &res) != nil || res.Satisfied == nil {
 			continue
 		}
 		for _, f := range res.Findings {
@@ -76,7 +85,7 @@ func (w *world) validatorFindings() ([]string, error) {
 		}
 	}
 	if len(found) == 0 {
-		return nil, fmt.Errorf("the validator found nothing wrong:\n%s", w.output)
+		return nil, fmt.Errorf("the %s found nothing wrong:\n%s", strings.Join(machines, " and "), w.output)
 	}
 	return found, nil
 }
@@ -86,6 +95,11 @@ func (w *world) findingsAreAbout(lens string) error {
 	if err != nil {
 		return err
 	}
+	return w.findingsAbout(lens, found)
+}
+
+// findingsAbout asks pi whether every finding is about the lens.
+func (w *world) findingsAbout(lens string, found []string) error {
 	return w.judge(fmt.Sprintf(`A reviewer was asked to look at some code through one lens only: %s. These are its findings, one per line:
 <<<
 %s
