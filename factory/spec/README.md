@@ -1,62 +1,91 @@
-# Homework 4 — The assembly line
+# Homework 5 — Runs and targets
 
 Read `FACTORY.md`, then the feature files in `features/`. Together they are
 the whole spec of the factory at this point, not just the new parts.
 
-The factory does the same work it did for homework 3. What changes is where
-the route lives. Until now it was hidden in your code: the order of planner,
-doer and validator, the retry, and the looping in the pass. All of it comes
-out into an **assembly line** — a graph the factory reads — and the planner,
-the doer and the validator become machines on it. The planner decides
-whether there is more to do; the line says where each answer goes.
+Your factory already builds into the target folder you choose. Until now
+every invocation supplied a seed and target and used the same assembly line. Each
+target kept one plan: an implicit run for that generation. This homework
+introduces named runs that remember what they build and how, while the
+factory source stays in `factory/`.
 
-That takes the pass with it. There is no more running one pass: the factory
-runs the assembly line, and the line says what happens next.
-
-The machines you configured in homework 3 move onto the line. The line
-is a folder of its own, in your factory's folder: its graph is
-`assembly-line.dot`, and its machines, each folder exactly as it was in
-`machines/`, are beside it. The line's nodes are the machines' names.
+- **The assembly lines move into the target.** A target holds its
+  product and, in `.assembly-lines/`, the lines that build it: a folder
+  each, named for the line, holding its `assembly-line.dot` and its
+  machines in `machines/`. Each line has its own machines, so two lines
+  can each have a doer, configured differently. Move your line folder
+  from homework 4 into `tetris/tetris-005/.assembly-lines/` (or whichever
+  target you choose).
+- **Each execution is a named run, kept on its line.** You name the run,
+  and the first time you start it you give it one of the target's lines
+  and a seed. The run remembers both. It lives in its line's folder, in
+  `runs/<name>/`, so you always say which target it is in: its target and
+  its name are enough to find it. Its plan is `plan.md` there. To resume
+  your existing game, move its `.factory/plan.md` into the run's folder;
+  a run now owns that plan. Or start with a fresh target.
+- **The run's folder is committed.** The factory commits it in commits
+  of its own, never with the work, so a run's plan and record stay in
+  Git with what it built. A machine's login never is: when you move or
+  copy a line, its machines' logins come with it, and Git still ignores
+  them.
 
 ```text
-factory/
-  assembly-lines/
+tetris/tetris-005/
+  .assembly-lines/
     careful/
       assembly-line.dot
       machines/
         planner/    AGENTS.md, its configuration and its login
         doer/
         validator/
+      runs/
+        tetris/
+          plan.md
+          ...       whatever the machines keep for the run
+    quick/
+      assembly-line.dot
+      machines/
+        planner/
+        doer/
+      runs/
+  src/ ...          the product
 ```
 
-An edge only routes. Its label names a field of the result the machine
-before it answered with: `satisfied` is taken when the validator's result
-says `"satisfied": true`, `not satisfied` when it says false. So the
-machines' results, not their words, decide where the line goes. The retry
-limit is not on the line: it is the factory's, a setting of your choice.
+The seed can be anywhere: it is the run's input, not part of it. The run's
+folder is where the run's own things go. Tell your machines, in their
+`AGENTS.md`, to keep anything they make for the run there: notes,
+artifacts, logs. The factory tells each machine where the folder is.
 
-Your factory has one assembly line. Take the
-validator out of it and the factory should still run, doing the work
-unchecked — without a change to your code.
+Once the route is data, a target can hold more than one line. Write a second
+one — the same line without the validator will do — and have each run say
+which line it runs.
 
-`assembly-line.feature` is prescriptive about Graphviz. That is to keep the
-acceptance criteria clean, not because it is the only way — if you would
-rather express the assembly line some other way, go ahead. The only thing
-you need to remember is you'll have to carry over any changes you make to
-the feature files across the future iterations
+Starting or resuming a run is an **invocation** of that same run. Its name,
+settings and plan persist across invocations.
 
+## The commands you'll end up with
 
-## Run against a target
-
-The factory source stays in `factory/`, and the target argument still
-selects the output codebase. Running the assembly line replaces `--all`:
+The exact shape is your choice. Run from the repository root, with
+`bin/factory` linked to your entry point:
 
 ```sh
-$ bin/factory --seed tetris/spec.md --target tetris/tetris-004
-$ npm --prefix tetris/tetris-004 start
+# a new run: its target, its line and its seed
+$ bin/factory --run tetris --target tetris/tetris-005 --line careful --seed tetris/spec.md
+
+# after that, its name and its target are enough
+$ bin/factory --run tetris --target tetris/tetris-005
+
+# a second target: write snake/spec.md describing Snake first
+# copy a line into it, machines included, but no runs
+$ mkdir -p snake/snake1/.assembly-lines
+$ cp -r tetris/tetris-005/.assembly-lines/quick snake/snake1/.assembly-lines/
+$ rm -rf snake/snake1/.assembly-lines/quick/runs
+$ bin/factory --run snake --target snake/snake1 --line quick --seed snake/spec.md
 ```
 
-A fresh target starts with a fresh plan in `.factory/plan.md`. Reusing
-`tetris/tetris-002` resumes its plan, which may already be complete. The seed
-is still supplied with `--seed`; the line and its machines live with the
-factory.
+The factory should build whatever the new seed describes, without disturbing
+the first run.
+
+The checks still run against a copy of your factory, which now keeps
+nothing of its own about runs. The copy builds in separate targets, each
+holding its own lines, their machines and their runs.
