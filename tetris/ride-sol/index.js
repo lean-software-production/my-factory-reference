@@ -24,10 +24,19 @@ function spawnPiece() {
   return { type, x: Math.floor((WIDTH - 4) / 2), y: 0, cells: SHAPES[type] };
 }
 
-const settled = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(' '));
-let activePiece = spawnPiece();
-let linesCleared = 0;
-let score = 0;
+let settled;
+let activePiece;
+let linesCleared;
+let score;
+
+function resetGame() {
+  settled = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(' '));
+  linesCleared = 0;
+  score = 0;
+  activePiece = spawnPiece();
+}
+
+resetGame();
 
 function clearLines() {
   let cleared = 0;
@@ -110,6 +119,7 @@ function render() {
     'Up: Rotate',
     'Space: Hard drop',
     'Q: Quit',
+    ...(!activePiece ? ['', 'GAME OVER', 'R: Restart'] : []),
   ];
   const lines = [
     'TETRIS',
@@ -118,7 +128,7 @@ function render() {
       '|' + row.map((cell) => cell + ' ').join('') + '|  ' + (sidebar[index] || '')
     ),
     '+' + '-'.repeat(WIDTH * 2) + '+',
-    'Press Q or Ctrl+C to quit.',
+    activePiece ? 'Press Q or Ctrl+C to quit.' : 'GAME OVER - Press R to restart, Q to quit.',
   ];
   // 1 title + 2 borders + 20 board rows + 1 footer = 24 terminal rows.
   process.stdout.write((process.stdout.isTTY ? '\x1b[H\x1b[2J' : '') + lines.join('\n'));
@@ -130,7 +140,7 @@ if (process.stdin.isTTY) {
   let gravity;
   function gravityTick() {
     tick();
-    gravity = setTimeout(gravityTick, fallInterval());
+    if (activePiece) gravity = setTimeout(gravityTick, fallInterval());
   }
   gravity = setTimeout(gravityTick, fallInterval());
   readline.emitKeypressEvents(process.stdin);
@@ -149,7 +159,15 @@ if (process.stdin.isTTY) {
       process.stdout.write('\n');
       process.exit(0);
     }
-    if (!activePiece) return;
+    if (!activePiece) {
+      if (key.name === 'r') {
+        clearTimeout(gravity);
+        resetGame();
+        render();
+        gravity = setTimeout(gravityTick, fallInterval());
+      }
+      return;
+    }
     if (key.name === 'up') {
       if (rotatePiece(activePiece)) render();
       return;
