@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Runs the implement-with-ralph-loop line on a seed, in a target: the first use of
+# the reference factory, before you build a factory of your own. For this
+# repository only; the starter's skill does the same steps for a student.
+#
+#   bin/use-reference-factory [<target>] [--run <name>] [--seed <file>]
+#
+# The defaults are the target tetris/tetris-000, the run tetris and the seed
+# tetris/spec.md. It copies lines/implement-with-ralph-loop into
+# <target>/.assembly-lines/implement-with-ralph-loop, copies your Pi login
+# (~/.pi/agent/auth.json) into each of its machines if you have one, and
+# starts the run. With no login it copies nothing, and Pi uses the provider
+# API key in your environment (for example OPENROUTER_API_KEY). Run it again
+# with the same target and run name to resume an interrupted run. Then
+# `watch <name> --target <target>`.
+#
+# FACTORY_BIN is the factory to run (default: bin/factory). MODEL, for
+# comparing models, replaces the model both machines name.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+run=tetris
+seed="$repo/tetris/spec.md"
+target=tetris/tetris-000
+target_given=
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run)  run="${2:?--run needs a name}"; shift 2 ;;
+    --seed) seed="${2:?--seed needs a file}"; shift 2 ;;
+    -h|--help) sed -n '2,/^set -/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "bin/use-reference-factory: unknown option $1" >&2; exit 2 ;;
+    *)  [ -z "$target_given" ] || { echo "bin/use-reference-factory: one target only" >&2; exit 2; }
+        target="$1"; target_given=1; shift ;;
+  esac
+done
+
+login="${HOME}/.pi/agent/auth.json"
+
+# The line goes into the target a run at a time: the files of the line are
+# copied over, and whatever runs the target already has are left alone.
+line="$target/.assembly-lines/implement-with-ralph-loop"
+mkdir -p "$line"
+cp -R "$repo/lines/implement-with-ralph-loop/." "$line/"
+for machine in "$line"/machines/*/; do
+  if [ -n "${MODEL:-}" ]; then
+    printf '{"harness": "pi-rpc-acp", "model": "%s"}\n' "$MODEL" > "$machine/machine.json"
+  fi
+  if [ -f "$login" ]; then
+    cp "$login" "$machine/auth.json"
+    chmod 600 "$machine/auth.json"
+  fi
+done
+
+# The pi-rpc-acp bridge is in tools/, as it is in a Codespace.
+export PATH="$PATH:$repo/tools/pi-rpc-acp"
+
+"${FACTORY_BIN:-$repo/bin/factory}" --run "$run" --target "$target" --line implement-with-ralph-loop --seed "$seed"
+echo "Watch it with: ${FACTORY_BIN:-bin/factory} watch $run --target $target"

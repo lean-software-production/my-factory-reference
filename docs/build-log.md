@@ -1711,3 +1711,16 @@ David chose `openai-codex/gpt-6.1-sol` as the default for both machines on
 default (my-factory-starter#17). The 7-minute ride and the model comparison
 above were measured on `gpt-6-sol`; the next release's ride measures the new
 default.
+
+## Renamed: bin/use-reference-factory
+
+`bin/ride` is now `bin/use-reference-factory`, on 2026-10-26, so that no file
+or command outside this log says "ride". It takes the target as an optional
+argument: with none it builds `tetris/tetris-000` as run `tetris`, from
+`tetris/spec.md`. `RIDE_MODEL` is now `MODEL`. A student with no
+`~/.pi/agent/auth.json` is no longer refused: the script copies no login and
+Pi uses the provider API key in the environment. `bin/use-reference-factory_test.sh`
+covers the defaults, a login, no login with a key in the environment, and
+`MODEL`. The wording in `bin/release` (a comment and the release notes it
+prints) no longer says "ride" either. Earlier sections of this log, and the
+ride targets already made, keep the old names.

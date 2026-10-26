@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the factory's release binaries: what a student's Codespace downloads
-# for its first ride. For this repository only.
+# for the first use of the reference factory. For this repository only.
 #
 #   bin/release <version>
 #
@@ -67,4 +67,4 @@ echo
 echo "Tagged $version. Push it with: git push origin $version"
 echo "To publish (not run), run this from the repository root:"
 echo
-echo "  gh release create $version -R lean-software-production/my-factory-starter --target main --title $version --notes \"Built from my-factory-reference@$sha. linux-arm64 and darwin-arm64 are untested: neither can be run where they are built. On an arm64 Linux box or a Mac, please try factory --version and a ride.\" $out/*"
+echo "  gh release create $version -R lean-software-production/my-factory-starter --target main --title $version --notes \"Built from my-factory-reference@$sha. linux-arm64 and darwin-arm64 are untested: neither can be run where they are built. On an arm64 Linux box or a Mac, please try factory --version and bin/use-reference-factory.\" $out/*"
