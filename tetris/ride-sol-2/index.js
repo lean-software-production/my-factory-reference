@@ -1,17 +1,6 @@
 // Terminal lifecycle and board display.
-const WIDTH = 10;
-const HEIGHT = 20;
-const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(null));
-// Coordinates are relative to the top-left corner of each piece's 4×4 box.
-const SHAPES = {
-  I: [[0, 1], [1, 1], [2, 1], [3, 1]],
-  O: [[1, 0], [2, 0], [1, 1], [2, 1]],
-  T: [[1, 0], [0, 1], [1, 1], [2, 1]],
-  S: [[1, 0], [2, 0], [0, 1], [1, 1]],
-  Z: [[0, 0], [1, 0], [1, 1], [2, 1]],
-  J: [[0, 0], [0, 1], [1, 1], [2, 1]],
-  L: [[2, 0], [0, 1], [1, 1], [2, 1]],
-};
+const { WIDTH, HEIGHT, SHAPES, newBoard, canPlace: fits, clearLines: removeLines, rotateCells } = require('./rules');
+const board = newBoard();
 const kinds = Object.keys(SHAPES);
 let active = null;
 let gameOver = false;
@@ -19,24 +8,7 @@ let score = 0;
 let gravity;
 
 function canPlace(piece, x, y, cells = piece.cells) {
-  return cells.every(([dx, dy]) => {
-    const col = x + dx;
-    const row = y + dy;
-    return col >= 0 && col < WIDTH && row >= 0 && row < HEIGHT && !board[row][col];
-  });
-}
-
-function clearLines() {
-  let cleared = 0;
-  for (let y = HEIGHT - 1; y >= 0; y--) {
-    if (board[y].every(Boolean)) {
-      board.splice(y, 1);
-      board.unshift(Array(WIDTH).fill(null));
-      cleared++;
-      y++; // Check this row again: the rows above have shifted down.
-    }
-  }
-  score += [0, 100, 300, 500, 800][cleared] || 0;
+  return fits(board, cells, x, y);
 }
 
 function spawnPiece() {
@@ -65,7 +37,7 @@ function lockPiece() {
   for (const [dx, dy] of active.cells) {
     board[active.y + dy][active.x + dx] = active.kind;
   }
-  clearLines();
+  score += removeLines(board);
   spawnPiece();
 }
 
@@ -78,7 +50,7 @@ function move(dx) {
 
 function rotate() {
   if (!active || active.kind === 'O') return;
-  const rotated = active.cells.map(([x, y]) => [3 - y, x]);
+  const rotated = rotateCells(active.cells);
   // Try the current position first, then small horizontal wall kicks.
   for (const dx of [0, -1, 1, -2, 2]) {
     if (canPlace(active, active.x + dx, active.y, rotated)) {
