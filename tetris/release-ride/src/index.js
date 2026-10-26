@@ -1,13 +1,19 @@
-const readline = require('node:readline');
-const { render, WIDTH, HEIGHT } = require('./render');
-const { spawnPiece } = require('./pieces');
+const { render } = require('./render');
+const { createGame, tick } = require('./game');
 
-const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(0));
-const activePiece = spawnPiece();
-if (process.stdout.isTTY) process.stdout.write('\x1b[2J\x1b[H');
-process.stdout.write(render(board, 0, activePiece) + '\n');
+const game = createGame();
+function draw() {
+  if (process.stdout.isTTY) process.stdout.write('\x1b[H');
+  process.stdout.write(render(game.board, game.score, game.piece) + '\n');
+}
 
-if (process.stdin.isTTY) {
-  const input = readline.createInterface({ input: process.stdin, output: process.stdout });
-  input.question('', () => input.close());
+if (process.stdout.isTTY) process.stdout.write('\x1b[2J');
+draw();
+if (process.stdin.isTTY && process.stdout.isTTY) {
+  setInterval(() => {
+    if (!game.gameOver) {
+      tick(game);
+      draw();
+    }
+  }, 750);
 }
