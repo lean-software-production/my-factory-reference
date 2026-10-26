@@ -6,15 +6,44 @@ const reset = '\x1b[0m';
 
 const BOARD_WIDTH = 10;
 const BOARD_HEIGHT = 20;
+const SHAPES = {
+  I: [[1, 1, 1, 1]],
+  O: [[1, 1], [1, 1]],
+  T: [[0, 1, 0], [1, 1, 1]],
+  S: [[0, 1, 1], [1, 1, 0]],
+  Z: [[1, 1, 0], [0, 1, 1]],
+  J: [[1, 0, 0], [1, 1, 1]],
+  L: [[0, 0, 1], [1, 1, 1]],
+};
 
-function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false))) {
+function spawnPiece(type = Object.keys(SHAPES)[Math.floor(Math.random() * 7)]) {
+  const shape = SHAPES[type];
+  if (!shape) throw new Error(`Unknown tetromino: ${type}`);
+  return {
+    type,
+    shape: shape.map((row) => row.slice()),
+    x: Math.floor((BOARD_WIDTH - shape[0].length) / 2),
+    y: 0,
+  };
+}
+
+function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null) {
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
-  const rows = board.map((row) => `|${row.map((cell) => cell ? '[]' : '  ').join('')}|`);
+  const cells = board.map((row) => row.slice());
+  if (piece) {
+    piece.shape.forEach((row, dy) => row.forEach((cell, dx) => {
+      const x = piece.x + dx;
+      const y = piece.y + dy;
+      if (cell && y >= 0 && y < BOARD_HEIGHT && x >= 0 && x < BOARD_WIDTH) cells[y][x] = true;
+    }));
+  }
+  const rows = cells.map((row) => `|${row.map((cell) => cell ? '[]' : '  ').join('')}|`);
   process.stdout.write(`${clear}TETRIS\n${border}\n${rows.join('\n')}\n${border}\n`);
 }
 
 function start() {
-  render();
+  const piece = spawnPiece();
+  render(undefined, piece);
   if (!process.stdin.isTTY) {
     process.stdout.write('(Run in a terminal to play.)\n');
     return;
@@ -38,4 +67,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { BOARD_WIDTH, BOARD_HEIGHT, render, start };
+module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, render, start };
