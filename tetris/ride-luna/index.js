@@ -76,7 +76,7 @@ function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_W
 
 function start() {
   const board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false));
-  const piece = spawnPiece();
+  let piece = spawnPiece();
   render(board, piece);
   if (!process.stdin.isTTY) {
     process.stdout.write('(Run in a terminal to play.)\n');
@@ -85,8 +85,18 @@ function start() {
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
+  const fallTimer = setInterval(() => {
+    if (!movePiece(board, piece, 0, 1)) {
+      piece.shape.forEach((row, dy) => row.forEach((cell, dx) => {
+        if (cell) board[piece.y + dy][piece.x + dx] = true;
+      }));
+      piece = spawnPiece();
+    }
+    render(board, piece);
+  }, 800);
   process.stdin.setEncoding('utf8');
   const cleanup = () => {
+    clearInterval(fallTimer);
     process.stdin.setRawMode(false);
     process.stdin.pause();
     process.stdout.write(`${reset}\n`);
