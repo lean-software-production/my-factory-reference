@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+	"unicode"
 
 	"github.com/lean-software-production/my-factory-reference/factory/internal/watch"
 )
@@ -269,12 +272,241 @@ func TestNodesAndEdgesOfTheDemoLine(t *testing.T) {
 	if got, want := edgeOf(t, d, "validator", "doer"), (replayEdge{"validator", "doer", "retry", true, true}); got != want {
 		t.Errorf("the edge is %+v, not %+v", got, want)
 	}
-	if got := edgeOf(t, d, "planner", "doer"); !got.Back || !got.SendBack {
-		t.Errorf("planner->doer is %+v, not back and sending back", got)
+	// The planner sending the next task out only goes round again.
+	if got := edgeOf(t, d, "planner", "doer"); !got.Back || got.SendBack {
+		t.Errorf("planner->doer is %+v, not back without sending back", got)
 	}
 
 	ralph := buildReplay(lineFrom(t, "../../../lines/implement-with-ralph-loop/assembly-line.dot"), nil, replayNames{})
 	if got := edgeOf(t, ralph, "ralph", "planner"); !got.Back || got.SendBack {
 		t.Errorf("ralph->planner is %+v, not back without sending back", got)
+	}
+}
+
+const sendBacksRecord = "testdata/replay/send-backs.jsonl"
+
+// countsOf are a frame's counts by edge, as "from->to".
+func countsOf(d replayDoc, f replayFrame) map[string]int {
+	counts := map[string]int{}
+	for i, e := range d.Edges {
+		counts[e.From+"->"+e.To] = f.Counts[i]
+	}
+	return counts
+}
+
+// checkCounts says where a frame's counts differ from those wanted: the
+// edges named have their counts, and, when every is set, all others none.
+func checkCounts(t *testing.T, d replayDoc, f replayFrame, want map[string]int, every bool) {
+	t.Helper()
+	for edge, got := range countsOf(d, f) {
+		if n, named := want[edge]; (named || every) && got != n {
+			t.Errorf("%s is counted %d, not %d", edge, got, n)
+		}
+	}
+}
+
+func sendBacksIn(d replayDoc) []handoff {
+	var sendBacks []handoff
+	for _, h := range d.Handoffs {
+		if h.SendBack {
+			sendBacks = append(sendBacks, h)
+		}
+	}
+	return sendBacks
+}
+
+func TestDemoEdgeCountsAtNineAndAHalfMinutes(t *testing.T) {
+	d := replayOf(t, demoRecord, demoGraph)
+	checkCounts(t, d, frameAt(d, 570), map[string]int{
+		"start->plan_gate":                       2,
+		"plan_gate->plan_author":                 1,
+		"plan_author->plan_reviewer_opus":        1,
+		"plan_author->plan_reviewer_gemini":      1,
+		"plan_author->plan_reviewer_astra":       1,
+		"plan_reviewer_opus->plan_synthesiser":   1,
+		"plan_reviewer_gemini->plan_synthesiser": 1,
+		"plan_reviewer_astra->plan_synthesiser":  1,
+		"plan_synthesiser->doer":                 1,
+		"plan_gate->planner":                     1,
+		"planner->doer":                          3,
+		"doer->validator":                        3,
+		"validator->planner":                     3,
+	}, true)
+}
+
+func TestDemoSendBacksAreTheTwoRetries(t *testing.T) {
+	d := replayOf(t, demoRecord, demoGraph)
+	if len(d.Handoffs) != 51 {
+		t.Errorf("there are %d hand-offs, not 51", len(d.Handoffs))
+	}
+	if len(d.Handoffs) > 0 && (d.Handoffs[0].Machine != "plan_gate" || !near(d.Handoffs[0].At, 0.01)) {
+		t.Errorf("the first hand-off is %+v, not to plan_gate at 0.01s", d.Handoffs[0])
+	}
+	sendBacks := sendBacksIn(d)
+	if len(sendBacks) != 2 {
+		t.Fatalf("the send-backs are %+v, not two", sendBacks)
+	}
+	for i, at := range []float64{1504.99, 1794.59} {
+		if h := sendBacks[i]; h.Machine != "doer" || math.Abs(h.At-at) > 0.5 {
+			t.Errorf("send-back %d is %+v, not the doer at %.2fs", i+1, h, at)
+		}
+	}
+	// 15 doer starts in all: 12 from the planner, 1 from the synthesiser and 2 retries.
+	checkCounts(t, d, lastFrame(t, d), map[string]int{
+		"validator->doer":        2,
+		"planner->finish":        1,
+		"planner->doer":          12,
+		"plan_synthesiser->doer": 1,
+	}, false)
+}
+
+func TestAnUnfinishedRecordEndsUnfinished(t *testing.T) {
+	raw, err := os.ReadFile(demoRecord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.SplitAfter(string(raw), "\n")
+	partial := filepath.Join(t.TempDir(), "record.jsonl")
+	if err := os.WriteFile(partial, []byte(strings.Join(lines[:201], "")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := replayOf(t, partial, demoGraph)
+	if d.End.State != "unfinished" || !near(d.Total, 1187.207) || d.End.Tokens != "353.3k" {
+		t.Errorf("the run ends %+v after %.3fs, not unfinished after 1187.207s with 353.3k", d.End, d.Total)
+	}
+}
+
+func TestSendBacksAreCountedAndMarked(t *testing.T) {
+	d := replayOf(t, sendBacksRecord, demoGraph)
+	last := lastFrame(t, d)
+	checkCounts(t, d, last, map[string]int{
+		"plan_synthesiser->plan_author":          1,
+		"validator->doer":                        1,
+		"validator->plan_author":                 1,
+		"planner->finish":                        1,
+		"plan_reviewer_opus->plan_synthesiser":   3,
+		"plan_reviewer_gemini->plan_synthesiser": 3,
+		"plan_reviewer_astra->plan_synthesiser":  3,
+	}, false)
+	var machines []string
+	for _, h := range sendBacksIn(d) {
+		machines = append(machines, h.Machine)
+	}
+	if want := []string{"plan_author", "doer", "plan_author"}; !slices.Equal(machines, want) {
+		t.Errorf("the send-backs are to %v, not %v", machines, want)
+	}
+	if !last.Finished {
+		t.Error("the last frame isn't finished")
+	}
+}
+
+func TestAFailedTurnCreditsNoEdge(t *testing.T) {
+	l := lineFrom(t, rideGraph)
+	events := eventsIn(t, rideRecord)
+	plannerStarts, doerTurns := 0, 0
+	for _, ev := range events {
+		switch {
+		case ev.Kind == watch.Start && ev.Machine == "planner":
+			plannerStarts++
+		case ev.Kind == watch.End && ev.Machine == "doer" && ev.Error == "":
+			doerTurns++
+		}
+	}
+	d := buildReplay(l, events, replayNames{})
+	// Every planner start but the two at the start of a segment came from the
+	// doer, and the doer whose turn failed handed off nothing.
+	checkCounts(t, d, lastFrame(t, d), map[string]int{
+		"start->planner": 2,
+		"doer->planner":  plannerStarts - 2,
+	}, false)
+	if doerTurns != plannerStarts-2 {
+		t.Errorf("the doer ended %d turns well, and the planner started %d times", doerTurns, plannerStarts)
+	}
+}
+
+func TestResultLineIsShortAndReadable(t *testing.T) {
+	l := lineFrom(t, demoGraph)
+	long := strings.Repeat("A summary that goes on. ", 13)[:300]
+	for _, c := range []struct {
+		machine string
+		res     string
+		want    string
+	}{
+		{"validator", `{"task":"3. Implement collision-safe horizontal movement.","retry":false,"replan":false,"satisfied":true,"findings":[],"checks":["..."]}`,
+			"retry ✗ · replan ✗ · satisfied ✓ · 3. Implement collision-safe horizontal movement."},
+		{"plan_gate", `{"pending":false,"ready":true}`, "pending ✗ · ready ✓"},
+		{"plan_gate", `{"zeta":true,"ready":true,"alpha":false,"pending":false}`, "pending ✗ · ready ✓ · alpha ✗ · zeta ✓"},
+		{"plan_reviewer_opus", `{}`, "result"},
+		{"plan_synthesiser", `{"satisfied":true,"findings":[]}`, "satisfied ✓"},
+		{"plan_synthesiser", `{"satisfied":true,"findings":["plain text"]}`, "satisfied ✓ · 1 finding: plain text"},
+		{"plan_synthesiser", `{"satisfied":false,"findings":[3,4]}`, "satisfied ✗ · 2 findings"},
+	} {
+		var res map[string]any
+		if err := json.Unmarshal([]byte(c.res), &res); err != nil {
+			t.Fatal(err)
+		}
+		if got := resultLine(l, c.machine, res); got != c.want {
+			t.Errorf("the result line of %s %s is %q, not %q", c.machine, c.res, got, c.want)
+		}
+	}
+
+	summary := []rune(resultLine(l, "plan_reviewer_opus", map[string]any{"summary": long}))
+	if len(summary) != 80 || summary[79] != '…' {
+		t.Errorf("a 300-character summary is shown as %q, not cut to 80 characters ending …", string(summary))
+	}
+
+	resultAt := func(time string) map[string]any {
+		for _, ev := range eventsIn(t, demoRecord) {
+			if ev.Kind == watch.Result && strings.HasPrefix(ev.Time.Format("15:04:05"), time) {
+				return ev.Result
+			}
+		}
+		t.Fatalf("the demo has no result at %s", time)
+		return nil
+	}
+	const retry = "retry ✓ · replan ✗ · satisfied ✗ · 11. Connect keyboard controls to the playable terminal session. · 1 finding: Unknown escape sequences can dispatch embedded bytes as game commands."
+	if got := resultLine(l, "validator", resultAt("18:04:45")); got != retry {
+		t.Errorf("the retry at 18:04:45 is shown %q, not %q", got, retry)
+	}
+	const two = "2 findings: Output failures during teardown are not handled reliably."
+	if got := resultLine(l, "validator", resultAt("18:09:35")); !strings.HasSuffix(got, " · "+two) {
+		t.Errorf("the retry at 18:09:35 is shown %q, not ending %q", got, two)
+	}
+}
+
+func TestDemoLogLinesDropTheResultsJSON(t *testing.T) {
+	d := replayOf(t, demoRecord, demoGraph)
+	const said = "I’ll check task 3 against the accepted plan, inspect the movement changes, and run the relevant tests."
+	found := false
+	for i, line := range d.Lines {
+		if strings.HasPrefix(line.Text, "{") {
+			t.Errorf("%s says %q", line.Machine, line.Text)
+		}
+		if line.Machine == "validator" && line.Text == said {
+			found = true
+			if i+1 == len(d.Lines) || !d.Lines[i+1].Result || d.Lines[i+1].Machine != "validator" {
+				t.Errorf("the validator's line isn't followed by its result")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("no line of the validator's says %q", said)
+	}
+}
+
+func TestLogLinesStripControlCharacters(t *testing.T) {
+	at := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	events := []watch.Event{
+		{Time: at, Kind: watch.Run, Run: "r", State: watch.Started},
+		{Time: at, Kind: watch.Start, Machine: "plan_gate"},
+		{Time: at.Add(time.Second), Kind: watch.Text, Machine: "plan_gate", Text: "red \x1b[31mtext\x1b[0m <b>bold</b>"},
+		{Time: at.Add(time.Second), Kind: watch.End, Machine: "plan_gate"},
+	}
+	d := buildReplay(lineFrom(t, demoGraph), events, replayNames{})
+	if len(d.Lines) != 1 {
+		t.Fatalf("the lines are %+v, not one", d.Lines)
+	}
+	if text := d.Lines[0].Text; !strings.Contains(text, "<b>bold</b>") || strings.ContainsFunc(text, unicode.IsControl) {
+		t.Errorf("the line is %q: it should keep <b>bold</b> and have no control characters", text)
 	}
 }
