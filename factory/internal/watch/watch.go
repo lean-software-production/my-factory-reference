@@ -68,21 +68,29 @@ func (ev Event) Ended() bool {
 }
 
 // A Watcher renders the events of one run's record, in order. It keeps
-// what it needs across events: which machines are running, what each has
-// spent, how far the run has got and for how long it has gone.
+// what it needs across events: which machines are running, which have
+// worked in this round, what each has spent and for how long the run has
+// gone.
 //
 // Written to a terminal, it styles what it shows: a colour for each
-// machine, and a line pinned at the bottom with the line, the run's
-// progress and its clock. Written anywhere else, or with NO_COLOR set, it
-// writes plain lines and nothing else, with no escapes.
+// machine, and a status bar of three rows pinned at the bottom with the
+// run, its route and round, and its clock and spending. Written anywhere
+// else, or with NO_COLOR set, it writes plain lines and nothing else, with
+// no escapes.
 type Watcher struct {
 	w      io.Writer
 	line   string // the assembly line the run executes
 	styled bool   // writing to a terminal, to be styled
 	cols   func() int
 
-	running   []string
+	bar     Bar    // what the status bar says that the record does not
+	run     string // the run's name, as the record gives it
+	round   int    // how many times the planner has started
+	running []string
+	worked  map[string]bool // machines that have worked in this round
+
 	spent     map[string]*tokens // by machine
+	spenders  []string           // the machines that have spent, in the order they first did
 	bills     map[string]int     // tokens in and out, by provider
 	providers []string           // in the order they first spend
 	total     int
@@ -90,12 +98,9 @@ type Watcher struct {
 	colours map[string]string // each machine's colour
 	width   int               // the widest a machine's name has been
 
-	progress progress // how far the run has got, if it has said
-	said     bool     // whether it has
-
 	start, now time.Time // when the run started, and the latest time known
-	live       bool      // the run is going, and its pinned line is wanted
-	pinned     bool      // the pinned line is on the screen
+	live       bool      // the run is going, and its status bar is wanted
+	pinned     bool      // the status bar is on the screen
 	drawn      int       // the seconds of the clock it shows
 }
 
@@ -104,7 +109,7 @@ type tokens struct{ in, out int }
 // New is a Watcher that writes to w, for a run on the line.
 func New(w io.Writer, line string) *Watcher {
 	wt := &Watcher{w: w, line: line, width: labelWidth,
-		spent: map[string]*tokens{}, bills: map[string]int{}, colours: map[string]string{}}
+		worked: map[string]bool{}, spent: map[string]*tokens{}, bills: map[string]int{}, colours: map[string]string{}}
 	wt.styled, wt.cols = terminalOf(w)
 	return wt
 }
@@ -138,6 +143,7 @@ func (wt *Watcher) Render(ev Event) error {
 			// Whatever was running before, it is not running now.
 			wt.running = nil
 			wt.live = true
+			wt.run = ev.Run
 			if !ev.Time.IsZero() {
 				wt.start = ev.Time
 			}
@@ -152,14 +158,22 @@ func (wt *Watcher) Render(ev Event) error {
 		}
 	case Start:
 		wt.live = true
+		// A round is the planner starting; the machines that worked in the
+		// last have not worked in this one.
+		if p := wt.bar.Route.Planner; p != "" && ev.Machine == p {
+			wt.round++
+			clear(wt.worked)
+		}
 		if !slices.Contains(wt.running, ev.Machine) {
 			wt.running = append(wt.running, ev.Machine)
 		}
 		return wt.showRunning()
 	case End:
 		wt.running = slices.DeleteFunc(wt.running, func(m string) bool { return m == ev.Machine })
+		wt.worked[ev.Machine] = true
 		if len(wt.running) == 0 {
-			return nil
+			// Nothing to say, but the route shows the machine has finished.
+			return wt.redraw()
 		}
 		return wt.showRunning()
 	case Text:
@@ -168,9 +182,8 @@ func (wt *Watcher) Render(ev Event) error {
 			fmt.Sprintf("%-*s | %s", wt.width, ev.Machine, text),
 			wt.label(ev.Machine)+" | "+text)
 	case Result:
-		// The result is already shown, as the line of text it is. What it
-		// says of progress is shown as well.
-		return wt.showProgress(ev)
+		// The result is already shown, as the line of text it is.
+		return nil
 	case Usage:
 		return wt.spend(ev)
 	case Told:
@@ -181,7 +194,7 @@ func (wt *Watcher) Render(ev Event) error {
 	return nil
 }
 
-// Tick tells the watcher the time now, so that the clock on the pinned line
+// Tick tells the watcher the time now, so that the clock on the status bar
 // goes on while nothing happens. It writes nothing unless a second has
 // passed, and nothing at all when the output is plain.
 func (wt *Watcher) Tick(now time.Time) error {
@@ -192,11 +205,20 @@ func (wt *Watcher) Tick(now time.Time) error {
 	if wt.seconds() == wt.drawn && wt.pinned {
 		return nil
 	}
+	return wt.redraw()
+}
+
+// redraw draws the status bar again, if there is one to draw: on a
+// terminal, while the run is going.
+func (wt *Watcher) redraw() error {
+	if !wt.styled || !wt.live {
+		return nil
+	}
 	return wt.write(wt.unpin() + wt.pin())
 }
 
 // ended shows the run ending, and, on a terminal, how long it took, in
-// place of the pinned line.
+// place of the status bar.
 func (wt *Watcher) ended(ev Event, text, colour string) error {
 	wt.live = false
 	return wt.show(text, colour+text+reset+dim+" ("+elapsed(wt.now.Sub(wt.start))+")"+reset)
@@ -212,23 +234,6 @@ func (wt *Watcher) showRunning() error {
 		fmt.Sprintf("%s%-*s%s %s", dim, wt.width, "running", reset, strings.Join(names, ", ")))
 }
 
-// showProgress shows the progress a result reports, if it reports any that
-// is different from what was said last: in the pinned line on a terminal,
-// and as a line of its own otherwise. What it says that is not sensible is
-// ignored.
-func (wt *Watcher) showProgress(ev Event) error {
-	p, ok := parseProgress(ev.Result["progress"])
-	if !ok || (wt.said && p == wt.progress) {
-		return nil
-	}
-	wt.progress, wt.said = p, true
-	if wt.styled {
-		return wt.write(wt.unpin() + wt.pin())
-	}
-	text := fmt.Sprintf("%-*s %s  %s", wt.width, "progress", p, p.bar())
-	return wt.show(text, text)
-}
-
 // spend adds what a turn spent to its machine's, its provider's and the
 // run's totals, and shows them.
 func (wt *Watcher) spend(ev Event) error {
@@ -236,6 +241,7 @@ func (wt *Watcher) spend(ev Event) error {
 	if t == nil {
 		t = &tokens{}
 		wt.spent[ev.Machine] = t
+		wt.spenders = append(wt.spenders, ev.Machine)
 	}
 	t.in += ev.InputTokens
 	t.out += ev.OutputTokens

@@ -25,7 +25,7 @@ func TestARunInterruptedAfterThePlannersCallHasThePlanCommitted(t *testing.T) {
 	// The planner writes the plan if there is none, and notes what it was
 	// told. The doer says it has begun and stays until it is let go.
 	planner := acptest.Script(`printf '%s\n' "$request" >> "`+state+`/prompts"
-[ -f "`+plan+`" ] || printf -- '- [ ] one\n- [ ] two\n' > "`+plan+`"`, `{"complete": false, "progress": {"done": 0, "total": 2}}`)
+[ -f "`+plan+`" ] || printf -- '- [ ] one\n- [ ] two\n' > "`+plan+`"`, `{"complete": false}`)
 	doer := acptest.Script(`echo $$ >> "`+state+`/pids"
 echo begun >> "`+state+`/begun"
 while [ ! -f "`+state+`/go" ]; do sleep 0.01; done`, `{"task": "one"}`)

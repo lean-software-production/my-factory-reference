@@ -50,8 +50,9 @@ func TestTheRalphLoopLineIsAPlannerAndADoer(t *testing.T) {
 }
 
 // The line's planner keeps a plan's tasks, leaves a task open while its
-// subtasks are, and reports its progress for watch to show.
-func TestTheRalphLoopPlannerKeepsThePlanAndReportsProgress(t *testing.T) {
+// subtasks are. It says nothing of progress: watch depends on nothing in
+// the plan or in a machine's prompt.
+func TestTheRalphLoopPlannerKeepsThePlan(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(ralphLoop, "machines", "planner", "AGENTS.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -60,11 +61,14 @@ func TestTheRalphLoopPlannerKeepsThePlanAndReportsProgress(t *testing.T) {
 	for _, want := range []string{
 		"## When a plan already exists", "Keep its tasks as they are, in order", "Don't add, remove, reword or split them",
 		"unless it has a subtask that is not done", "a task is not done until its subtasks are",
-		`{"complete": false, "progress": {"done": 5, "total": 12}}`,
+		`finish your answer with your result, as the factory asks for it`,
 	} {
-		if !strings.Contains(text, want) {
+		if !strings.Contains(strings.ToLower(text), strings.ToLower(want)) {
 			t.Errorf("the planner's AGENTS.md lacks %q", want)
 		}
+	}
+	if strings.Contains(strings.ToLower(text), "progress") {
+		t.Errorf("the planner's AGENTS.md still speaks of progress")
 	}
 }
 

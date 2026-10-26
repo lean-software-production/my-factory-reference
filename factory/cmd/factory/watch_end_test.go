@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,21 +21,37 @@ import (
 	"github.com/lean-software-production/my-factory-reference/factory/internal/acptest"
 )
 
+// escapes are the escape sequences a terminal is written, to be left out of
+// the text it shows.
+var escapes = regexp.MustCompile(`\x1b\[[0-9;]*[A-Za-z]`)
+
+// How a watch is ended, in TestWatchEndedEarlyLeavesNoPinnedLine.
+type watchEnd struct {
+	end     func(t *testing.T, tty *os.File, daemon int, state string)
+	failure bool // watch exits with a failure
+}
+
 // A watch that ends early, interrupted or because the factory went away
-// under it, leaves the terminal on a clean line: the pinned line is wiped,
-// not left for the shell's prompt to land on.
+// under it, leaves the terminal on a clean line: the status bar, all three
+// rows of it, is wiped, not left for the shell's prompt to land on. So does
+// one whose run ends, which still says how.
 func TestWatchEndedEarlyLeavesNoPinnedLine(t *testing.T) {
-	for name, end := range map[string]func(t *testing.T, tty *os.File, daemon int){
-		"interrupted": func(t *testing.T, tty *os.File, daemon int) {
+	for name, how := range map[string]watchEnd{
+		"interrupted": {failure: true, end: func(t *testing.T, tty *os.File, daemon int, state string) {
 			if _, err := tty.Write([]byte{3}); err != nil { // ^C, as the terminal sends SIGINT
 				t.Fatal(err)
 			}
-		},
-		"the factory killed": func(t *testing.T, tty *os.File, daemon int) {
+		}},
+		"the factory killed": {failure: true, end: func(t *testing.T, tty *os.File, daemon int, state string) {
 			if err := syscall.Kill(daemon, syscall.SIGKILL); err != nil {
 				t.Fatal(err)
 			}
-		},
+		}},
+		"the run ended": {end: func(t *testing.T, tty *os.File, daemon int, state string) {
+			if err := os.WriteFile(filepath.Join(state, "go"), nil, 0o644); err != nil { // let the planner finish
+				t.Fatal(err)
+			}
+		}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// A daemon that is killed leaves its folder; this goes last,
@@ -99,21 +116,27 @@ while [ -d "`+state+`" ] && [ ! -f "`+state+`/go" ]; do sleep 0.01; done`, `{"co
 				}
 			}()
 			shown := func() string { mu.Lock(); defer mu.Unlock(); return out.String() }
-			for deadline := time.Now().Add(10 * time.Second); !strings.Contains(shown(), "▶") && time.Now().Before(deadline); {
+			text := func() string { return escapes.ReplaceAllString(shown(), "") }
+			for deadline := time.Now().Add(10 * time.Second); !strings.Contains(text(), "round 1") && time.Now().Before(deadline); {
 				time.Sleep(10 * time.Millisecond)
 			}
-			if !strings.Contains(shown(), "▶") {
-				t.Fatalf("watch never showed a pinned line:\n%q", shown())
+			for _, want := range []string{"r on only · " + target, "start ▸ planner", "round 1", "run 0 tokens"} {
+				if !strings.Contains(text(), want) {
+					t.Fatalf("watch never showed %q in its status bar:\n%q", want, text())
+				}
 			}
 
-			end(t, tty, daemon)
+			how.end(t, tty, daemon, state)
 			done := make(chan error, 1)
 			go func() { done <- watch.Wait() }()
 			select {
 			case err := <-done:
 				var exit *exec.ExitError
-				if !errors.As(err, &exit) || exit.ExitCode() == 0 {
+				if how.failure && (!errors.As(err, &exit) || exit.ExitCode() == 0) {
 					t.Errorf("watch ended with %v, not a failure", err)
+				}
+				if !how.failure && err != nil {
+					t.Errorf("watch ended with %v, not success", err)
 				}
 			case <-time.After(10 * time.Second):
 				watch.Process.Kill()
@@ -121,14 +144,20 @@ while [ -d "`+state+`" ] && [ ! -f "`+state+`/go" ]; do sleep 0.01; done`, `{"co
 			}
 			time.Sleep(50 * time.Millisecond) // for the last of its output
 			got := shown()
-			// Whatever was last drawn on the line is wiped, and nothing is
-			// drawn after that.
+			// Whatever was last drawn is wiped, and nothing is drawn after
+			// that.
 			wiped := strings.LastIndex(got, "\x1b[2K")
 			if wiped < 0 {
-				t.Fatalf("the pinned line was never wiped:\n%q", got)
+				t.Fatalf("the status bar was never wiped:\n%q", got)
 			}
-			if after := got[wiped:]; strings.Contains(after, "▶") {
-				t.Errorf("the pinned line was left on the screen:\n%q", after)
+			after := escapes.ReplaceAllString(got[wiped:], "")
+			for _, part := range []string{"r on only", "start ▸", "round", "tokens", "▸", "·"} {
+				if strings.Contains(after, part) {
+					t.Errorf("the status bar was left on the screen, with %q after the last wipe:\n%q", part, after)
+				}
+			}
+			if finished := strings.Contains(got, "run r finished"); finished == how.failure {
+				t.Errorf("the run's end: %q is shown: %v\n%q", "run r finished", finished, got)
 			}
 		})
 	}

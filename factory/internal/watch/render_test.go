@@ -35,7 +35,7 @@ func TestWatchPlainWhenNotATerminal(t *testing.T) {
 		Event{Kind: Run, Run: "tetris", State: Started},
 		Event{Kind: Start, Machine: "planner"},
 		Event{Kind: Text, Machine: "planner", Text: "planning"},
-		Event{Kind: Result, Machine: "planner", Text: `{}`, Result: map[string]any{"progress": map[string]any{"done": 1.0, "total": 4.0}}},
+		Event{Kind: Result, Machine: "planner", Text: `{}`, Result: map[string]any{"complete": false}},
 		Event{Kind: Usage, Machine: "planner", Provider: "openai", InputTokens: 10, OutputTokens: 5},
 		Event{Kind: Told, Machine: "planner", Text: "hurry"},
 		Event{Kind: End, Machine: "planner"},
@@ -63,84 +63,6 @@ func TestNoColorMakesATerminalPlain(t *testing.T) {
 	}
 }
 
-// Progress that is missing, or makes no sense, is dropped or clamped.
-func TestProgressBarToleratesBadValues(t *testing.T) {
-	for name, value := range map[string]any{
-		"nil":              nil,
-		"not an object":    "6 of 12",
-		"no total":         map[string]any{"done": 3.0},
-		"zero total":       map[string]any{"total": 0.0},
-		"negative total":   map[string]any{"done": 1.0, "total": -4.0},
-		"done too big":     map[string]any{"done": 15.0, "total": 12.0},
-		"done negative":    map[string]any{"done": -3.0, "total": 12.0},
-		"done not number":  map[string]any{"done": "x"},
-		"total not number": map[string]any{"done": 1.0, "total": "12"},
-		"fractions":        map[string]any{"done": 2.5, "total": 7.9},
-	} {
-		t.Run(name, func(t *testing.T) {
-			p, ok := parseProgress(value)
-			if !ok {
-				return // dropped
-			}
-			if p.done < 0 || p.done > p.total {
-				t.Errorf("progress %+v is not clamped", p)
-			}
-			if n := strings.Count(p.bar(), "█") + strings.Count(p.bar(), "░"); n != barCells {
-				t.Errorf("bar %q has %d cells, not %d", p.bar(), n, barCells)
-			}
-		})
-	}
-
-	// And a watcher given them shows no bar, and does not fall over.
-	var out bytes.Buffer
-	wt := styled(&out, "careful")
-	render(t, wt,
-		Event{Kind: Run, Run: "tetris", State: Started},
-		Event{Kind: Result, Machine: "planner", Result: map[string]any{"progress": map[string]any{"total": 0.0}}},
-		Event{Kind: Result, Machine: "planner", Result: map[string]any{"progress": "lots"}},
-		Event{Kind: Result, Machine: "planner"},
-	)
-	if strings.Contains(out.String(), "task") || strings.Contains(out.String(), "█") {
-		t.Errorf("a bad progress was shown:\n%q", out.String())
-	}
-}
-
-// A pinned line wider than the terminal is cut, so that it cannot wrap.
-func TestPinnedLineIsCutToTheTerminal(t *testing.T) {
-	var out bytes.Buffer
-	wt := styled(&out, "a-line-with-a-long-name")
-	wt.cols = func() int { return 12 }
-	render(t, wt, Event{Kind: Run, Run: "r", State: Started})
-	if !strings.HasSuffix(out.String(), bold+"▶ a-line-wi"+reset) {
-		t.Errorf("got %q", out.String())
-	}
-}
-
-// A done greater than the total is shown as all done.
-func TestProgressIsClamped(t *testing.T) {
-	p, ok := parseProgress(map[string]any{"done": 15.0, "total": 12.0})
-	if !ok || p.done != 12 || p.total != 12 || p.bar() != strings.Repeat("█", 16) {
-		t.Errorf("got %+v %q, %v", p, p.bar(), ok)
-	}
-}
-
-func TestProgressBarCounts(t *testing.T) {
-	p, ok := parseProgress(map[string]any{"done": 5.0, "total": 12.0})
-	if !ok {
-		t.Fatal("progress not read")
-	}
-	if got := p.String(); got != "task 5/12" {
-		t.Errorf("progress reads %q", got)
-	}
-	if got, want := p.bar(), strings.Repeat("█", 6)+strings.Repeat("░", 10); got != want {
-		t.Errorf("bar is %q, not %q", got, want)
-	}
-	// Whole numbers that arrive as ints, from a result read in-process.
-	if q, ok := parseProgress(map[string]any{"done": 5, "total": 12}); !ok || q != p {
-		t.Errorf("ints read as %+v, %v", q, ok)
-	}
-}
-
 func TestElapsedIsShownInMinutesAndSeconds(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		0:                                     "0s",
@@ -164,37 +86,6 @@ func TestCountChangesUnitBeforeItReachesAThousand(t *testing.T) {
 		if got := Count(n); got != want {
 			t.Errorf("Count(%d) = %q, not %q", n, got, want)
 		}
-	}
-}
-
-// On a terminal the pinned line sits at the bottom: it is wiped before
-// each line is written and drawn again after it.
-func TestPinnedLineStaysAtTheBottom(t *testing.T) {
-	var out bytes.Buffer
-	wt := styled(&out, "careful")
-	t0 := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
-	render(t, wt,
-		Event{Time: t0, Kind: Run, Run: "tetris", State: Started},
-		Event{Time: t0.Add(time.Second), Kind: Result, Machine: "planner",
-			Result: map[string]any{"progress": map[string]any{"done": 5.0, "total": 12.0}}},
-		Event{Time: t0.Add(400 * time.Second), Kind: Text, Machine: "doer", Text: "hello"},
-	)
-	got := out.String()
-	pin := "▶ careful  task 5/12  " + strings.Repeat("█", 6) + strings.Repeat("░", 10) + "  6m 40s"
-	if !strings.HasSuffix(got, pin+reset) {
-		t.Errorf("the output does not end with the pinned line %q:\n%q", pin, got)
-	}
-	if strings.Count(got, "hello") != 1 || strings.Index(got, "hello") > strings.LastIndex(got, "▶") {
-		t.Errorf("the line was not written above the pinned line:\n%q", got)
-	}
-	if !strings.Contains(got, wipe) {
-		t.Errorf("the pinned line was not wiped before a line was written:\n%q", got)
-	}
-	// Without progress, it reads the line and the clock.
-	var bare bytes.Buffer
-	render(t, styled(&bare, "quick"), Event{Time: t0, Kind: Run, Run: "r", State: Started})
-	if !strings.Contains(bare.String(), "▶ quick  0s"+reset) {
-		t.Errorf("a pinned line with no progress:\n%q", bare.String())
 	}
 }
 
@@ -322,34 +213,11 @@ func TestTerminalLooksRightForTokensToldAndTheEnd(t *testing.T) {
 			t.Errorf("missing %q in:\n%q", want, got)
 		}
 	}
-	if after := got[strings.LastIndex(got, wipe):]; strings.Contains(after, "▶") {
-		t.Errorf("the pinned line is drawn again after the run ended:\n%q", after)
+	if after := got[strings.LastIndex(got, wipe):]; strings.Contains(after, "round") {
+		t.Errorf("the bar is drawn again after the run ended:\n%q", after)
 	}
 	if !strings.HasSuffix(got, "\n") {
 		t.Errorf("the output does not end with a line ending:\n%q", got)
-	}
-}
-
-// Closing a watcher whose pinned line is on the screen wipes it, so that
-// whatever comes next starts on a clean line. Closing it again does nothing.
-func TestCloseWipesThePinnedLine(t *testing.T) {
-	var out bytes.Buffer
-	wt := styled(&out, "careful")
-	render(t, wt, Event{Kind: Run, Run: "tetris", State: Started})
-	out.Reset()
-	if err := wt.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if out.String() != wipe {
-		t.Errorf("closing wrote %q, not a wipe", out.String())
-	}
-	out.Reset()
-	if err := wt.Close(); err != nil || out.Len() != 0 {
-		t.Errorf("closing again: %v, wrote %q", err, out.String())
-	}
-	// And the pinned line is not drawn again after it.
-	if err := wt.Tick(time.Now().Add(time.Hour)); err != nil || out.Len() != 0 {
-		t.Errorf("a tick after closing: %v, wrote %q", err, out.String())
 	}
 }
 

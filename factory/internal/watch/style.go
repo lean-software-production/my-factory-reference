@@ -5,20 +5,21 @@ import (
 	"os"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"golang.org/x/term"
 )
 
 // The escapes a terminal is written. Plain output has none of them.
 const (
-	reset  = "\x1b[0m"
-	bold   = "\x1b[1m"
-	dim    = "\x1b[2m"
-	red    = "\x1b[31m"
-	green  = "\x1b[32m"
-	yellow = "\x1b[33m"
-	wipe   = "\r\x1b[2K" // wipe the line the cursor is on
+	reset   = "\x1b[0m"
+	bold    = "\x1b[1m"
+	dim     = "\x1b[2m"
+	red     = "\x1b[31m"
+	green   = "\x1b[32m"
+	yellow  = "\x1b[33m"
+	inverse = "\x1b[7m"
+	wipe    = "\r\x1b[2K" // wipe the line the cursor is on
+	up      = "\x1b[1A"   // move the cursor up a line
 )
 
 // palette is the colours machines are given, in the order they first
@@ -42,14 +43,19 @@ func terminalOf(w any) (bool, func() int) {
 	}
 }
 
-// name is the machine's name in its colour.
-func (wt *Watcher) name(machine string) string {
+// colour is the machine's colour, given it the first time it is asked for.
+func (wt *Watcher) colour(machine string) string {
 	colour, ok := wt.colours[machine]
 	if !ok {
 		colour = palette[len(wt.colours)%len(palette)]
 		wt.colours[machine] = colour
 	}
-	return colour + machine + reset
+	return colour
+}
+
+// name is the machine's name in its colour.
+func (wt *Watcher) name(machine string) string {
+	return wt.colour(machine) + machine + reset
 }
 
 // label is the machine's name in its colour, padded to the column.
@@ -58,7 +64,7 @@ func (wt *Watcher) label(machine string) string {
 }
 
 // show writes a line: the plain one, or, on a terminal, the styled one,
-// above the pinned line.
+// above the status bar.
 func (wt *Watcher) show(plain, styled string) error {
 	if !wt.styled {
 		return wt.write(plain + "\n")
@@ -74,34 +80,29 @@ func (wt *Watcher) write(s string) error {
 	return err
 }
 
-// unpin is what wipes the pinned line from the screen, if it is there.
+// barRows is how many rows the status bar is.
+const barRows = 3
+
+// unpin is what wipes the status bar from the screen, if it is there: the
+// row the cursor is on, which is the last, and each of the rows above it,
+// leaving the cursor on the first.
 func (wt *Watcher) unpin() string {
 	if !wt.pinned {
 		return ""
 	}
 	wt.pinned = false
-	return wipe
+	return wipe + strings.Repeat(up+wipe, barRows-1)
 }
 
-// pin is the pinned line, written at the foot of the screen, with no line
-// ending, so that the next line replaces it: the line, how far the run has
-// got if it has said, and how long it has gone. It is empty once the run
-// has ended.
+// pin is the status bar, written at the foot of the screen, with no line
+// ending after the last row, so that the next line replaces it from the
+// first. It is empty once the run has ended.
 func (wt *Watcher) pin() string {
 	if !wt.live {
 		return ""
 	}
-	text := "▶ " + wt.line
-	if wt.said {
-		text += "  " + wt.progress.String() + "  " + wt.progress.bar()
-	}
-	text += "  " + elapsed(wt.now.Sub(wt.start))
-	// A line longer than the terminal would wrap, and could not be wiped.
-	if cols := wt.columns(); cols > 0 && utf8.RuneCountInString(text) >= cols {
-		text = string([]rune(text)[:cols-1])
-	}
 	wt.pinned, wt.drawn = true, wt.seconds()
-	return bold + text + reset
+	return strings.Join(wt.rows(), "\n")
 }
 
 // seconds is how long the run has gone, in whole seconds.
@@ -116,9 +117,9 @@ func (wt *Watcher) columns() int {
 	return wt.cols()
 }
 
-// Close ends the watching: it wipes the pinned line, if it is on the
-// screen, so that the terminal is left on a clean line however the watching
-// ended, and draws it no more. It does nothing the second time.
+// Close ends the watching: it wipes the status bar, all of it, if it is on
+// the screen, so that the terminal is left on a clean line however the
+// watching ended, and draws it no more. It does nothing the second time.
 func (wt *Watcher) Close() error {
 	wt.live = false
 	return wt.write(wt.unpin())

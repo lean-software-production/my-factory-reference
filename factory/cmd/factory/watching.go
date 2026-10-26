@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lean-software-production/my-factory-reference/factory/internal/watch"
@@ -43,8 +44,9 @@ func watchCommand(args []string) error {
 	f := runFolder{target: i.target, name: i.run, settings: settings{Line: line},
 		dir: filepath.Join(i.target, linesFolder, line, "runs", i.run)}
 	w := watch.New(os.Stdout, line)
-	w.Names(machineNames(filepath.Join(i.target, linesFolder, line))...)
-	// Watching can be interrupted. Either way it ends, the pinned line is
+	w.Names(machineNames(f.lineDir())...)
+	w.SetBar(watch.Bar{Run: f.name, Target: shownTarget(f.target), Route: routeOf(f.lineDir())})
+	// Watching can be interrupted. Either way it ends, the status bar is
 	// wiped before anything more is said.
 	ctx, stop := stoppedBySignals()
 	defer stop()
@@ -136,6 +138,17 @@ func follow(ctx context.Context, f runFolder, w *watch.Watcher) (watch.Event, er
 func (f runFolder) isRunning() bool {
 	rep, err := call(request{Op: "status"}, false)
 	return err == nil && rep.Run == f.name && rep.Target == f.target
+}
+
+// shownTarget is the target as the status bar names it: its path from the
+// folder watch is run in, if it is in it, and its whole path otherwise.
+func shownTarget(target string) string {
+	if wd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(wd, target); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return rel
+		}
+	}
+	return target
 }
 
 // machineNames are the names of the machines of the assembly line in the
