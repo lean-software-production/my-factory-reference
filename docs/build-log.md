@@ -1556,3 +1556,8 @@ No `homework-*` tag and not the `2026.10.26` tag were moved, and
   factory is stopped. The check after the wipe no longer slices before it
   knows there was one. `-count=10`, twice: 20 passes, no harness left, no
   new daemon folder.
+- **The scratch ride targets are gone.** `tetris/ride-sol`, `ride-sol-2`,
+  `ride-luna`, `ride-luna-2`, `ride-kill` and `ride-kill-2` were removed
+  in "Remove the scratch ride targets"; its parent, `45e2cf6`, still holds
+  them, with the runs' records the table above is drawn from. The release
+  rides' targets, `tetris/release-ride` and (below) `release-ride-2`, stay.

@@ -1,9 +1,0 @@
-{
-  "name": "terminal-tetris",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "start": "node index.js",
-    "test": "node --test"
-  }
-}
