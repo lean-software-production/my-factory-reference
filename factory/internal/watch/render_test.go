@@ -388,3 +388,30 @@ func TestNamedMachinesFixTheColumnFromTheStart(t *testing.T) {
 		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
+
+// What a machine says is shown without the control characters in it, as
+// colours, cursor moves and carriage returns, so that a machine cannot
+// redraw the screen or the pinned line. Tabs are kept.
+func TestMachineTextIsShownWithoutControlCharacters(t *testing.T) {
+	for name, wt := range map[string]func(*bytes.Buffer) *Watcher{
+		"plain":    func(out *bytes.Buffer) *Watcher { return New(out, "careful") },
+		"terminal": func(out *bytes.Buffer) *Watcher { return styled(out, "careful") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			var out bytes.Buffer
+			render(t, wt(&out),
+				Event{Kind: Run, Run: "tetris", State: Started},
+				Event{Kind: Start, Machine: "doer"},
+				Event{Kind: Text, Machine: "doer", Text: "\x1b[31mred\x1b[0m half\rway\tthere\a\x00"},
+			)
+			_, said, ok := strings.Cut(out.String(), " | ")
+			if !ok {
+				t.Fatalf("the machine's text was not shown:\n%q", out.String())
+			}
+			said, _, _ = strings.Cut(said, "\n")
+			if said != "[31mred[0m halfway\tthere" {
+				t.Errorf("the machine's text was shown as %q", said)
+			}
+		})
+	}
+}

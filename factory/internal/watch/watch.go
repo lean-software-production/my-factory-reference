@@ -163,9 +163,10 @@ func (wt *Watcher) Render(ev Event) error {
 		}
 		return wt.showRunning()
 	case Text:
+		text := withoutControls(ev.Text)
 		return wt.show(
-			fmt.Sprintf("%-*s | %s", wt.width, ev.Machine, ev.Text),
-			wt.label(ev.Machine)+" | "+ev.Text)
+			fmt.Sprintf("%-*s | %s", wt.width, ev.Machine, text),
+			wt.label(ev.Machine)+" | "+text)
 	case Result:
 		// The result is already shown, as the line of text it is. What it
 		// says of progress is shown as well.
@@ -267,4 +268,16 @@ func Count(n int) string {
 		unit *= 1000
 	}
 	return fmt.Sprint(n)
+}
+
+// withoutControls is the text without its C0 control characters, ESC
+// among them, but for tabs: what a machine says cannot move the cursor,
+// colour the screen or wipe the pinned line.
+func withoutControls(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\t' {
+			return -1
+		}
+		return r
+	}, text)
 }
