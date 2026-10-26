@@ -1756,3 +1756,15 @@ repository root by David:
 ```
 gh release create 2026.10.26.2 -R lean-software-production/my-factory-starter --target main --title 2026.10.26.2 --notes "Built from my-factory-reference@ac3b645. linux-arm64 and darwin-arm64 are untested: neither can be run where they are built. On an arm64 Linux box or a Mac, please try factory --version and a run of the implement-with-ralph-loop line." dist/2026.10.26.2/*
 ```
+
+## Publishing a release in one step: bin/publish-release
+
+`bin/publish-release [<version>]` builds (through `bin/release`), tags, pushes
+the tag, creates the release on `my-factory-starter` with the three binaries
+and `SHA256SUMS`, and checks the published `SHA256SUMS` downloads and matches.
+With no version it takes the next free one for today. It refuses unless HEAD
+is on `origin/main`. `bin/publish-release_test.sh` checks the version it
+picks; the publishing itself is only exercised by a real release. Release
+2026.10.26.2 was first published without its files, by hand, which this
+script makes impossible. Publishing doesn't move students: the starter pins
+the version in `bin/get-reference-factory`.

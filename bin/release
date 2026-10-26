@@ -8,7 +8,8 @@
 # the same day. The tree must be clean, so the binaries are the committed
 # code. It builds linux-amd64, linux-arm64 and darwin-arm64 into
 # dist/<version>/, writes SHA256SUMS beside them, tags this repository
-# <version> and prints the command that publishes them. It does not run it.
+# <version> and prints the command that publishes them. It does not run it:
+# bin/publish-release does all of this and publishes too.
 #
 # The binaries are static (CGO_ENABLED=0) and carry no Git stamp
 # (-buildvcs=false), so the same commit always builds the same bytes.
@@ -64,6 +65,9 @@ echo
 echo "Built $out:"
 (cd "$out" && ls -l)
 echo
+# bin/publish-release pushes and publishes for itself.
+[ -z "${PUBLISHING:-}" ] || exit 0
+
 echo "Tagged $version. Push it with: git push origin $version"
 echo "To publish (not run), run this from the repository root:"
 echo

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Builds the factory's release binaries, tags this repository, and publishes
+# them as a release on lean-software-production/my-factory-starter, where a
+# student's bin/get-reference-factory downloads them. For this repository
+# only.
+#
+#   bin/publish-release [<version>]
+#   bin/publish-release --next-version
+#
+# With no <version> it takes the next free one for today: YYYY.MM.DD, then
+# YYYY.MM.DD.1, .2 if today already has releases. It runs bin/release to
+# build and tag, pushes the tag, creates the release with the three binaries
+# and SHA256SUMS, and checks that the published SHA256SUMS can be downloaded
+# and matches. HEAD must already be on origin/main, so the commit the notes
+# name is one anyone with access can see.
+#
+# --next-version prints the version it would use, and does nothing else.
+#
+# Publishing doesn't change what students get: the starter pins a version in
+# bin/get-reference-factory. Update that line to move students on.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+cd "$repo"
+
+starter=lean-software-production/my-factory-starter
+die() { echo "bin/publish-release: $*" >&2; exit 1; }
+
+# The next free version for today, among this repository's tags and origin's.
+# RELEASE_DATE (YYYY.MM.DD) stands in for today, for testing.
+next_version() {
+  local today tags n
+  today="${RELEASE_DATE:-$(date +%Y.%m.%d)}"
+  tags="$(git tag -l; { git ls-remote --tags origin 2>/dev/null || true; } | sed 's#.*refs/tags/##; s#\^{}$##')"
+  if ! grep -qxF "$today" <<<"$tags"; then echo "$today"; return; fi
+  n=1
+  while grep -qxF "$today.$n" <<<"$tags"; do n=$((n + 1)); done
+  echo "$today.$n"
+}
+
+case "${1:-}" in
+  -h|--help) sed -n '2,/^set -/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+  --next-version) next_version; exit 0 ;;
+esac
+[ $# -le 1 ] || { echo "usage: bin/publish-release [<version>]" >&2; exit 2; }
+version="${1:-$(next_version)}"
+
+git fetch -q origin main || die "could not fetch origin/main"
+git merge-base --is-ancestor HEAD origin/main \
+  || die "HEAD $(git rev-parse --short HEAD) is not on origin/main: push it first"
+command -v gh >/dev/null || die "gh is not installed"
+gh release list -R "$starter" --limit 1 >/dev/null \
+  || die "gh can't read $starter's releases: check gh's sign-in"
+gh release view "$version" -R "$starter" >/dev/null 2>&1 \
+  && die "$starter already has a release $version"
+
+echo "Publishing $version"
+PUBLISHING=1 bin/release "$version"
+out="dist/$version"
+sha="$(git rev-parse --short HEAD)"
+
+git push -q origin "refs/tags/$version"
+
+notes="Built from my-factory-reference@$sha. The linux-arm64 and darwin-arm64 builds haven't been tried: neither can be run where they are built. On an arm64 Linux machine or a Mac, please try factory --version and a run of the implement-with-ralph-loop assembly line."
+gh release create "$version" -R "$starter" --target main --title "$version" --notes "$notes" \
+  "$out"/factory-"$version"-* "$out/SHA256SUMS" \
+  || die "tag $version is pushed but the release wasn't created: run gh release create $version -R $starter --target main --title $version $out/* to finish"
+
+# What a student's download would see.
+url="https://github.com/$starter/releases/download/$version/SHA256SUMS"
+published="$(curl -fsSL "$url")" || die "published, but $url can't be downloaded"
+[ "$published" = "$(cat "$out/SHA256SUMS")" ] || die "published, but $url doesn't match $out/SHA256SUMS"
+
+echo
+echo "Published https://github.com/$starter/releases/tag/$version"
+echo "Students still get the version pinned in $starter's bin/get-reference-factory."
+echo "To move them on, set version=$version there."
