@@ -43,6 +43,30 @@ function movePiece(board, piece, dx, dy) {
   return true;
 }
 
+function rotatePiece(board, piece, direction = 1) {
+  const height = piece.shape.length;
+  const width = piece.shape[0].length;
+  const rotated = Array.from({ length: width }, (_, y) =>
+    Array.from({ length: height }, (_, x) =>
+      direction >= 0 ? piece.shape[height - 1 - x][y] : piece.shape[x][width - 1 - y]
+    )
+  );
+  const candidate = { ...piece, shape: rotated };
+  if (collides(board, candidate)) return false;
+  piece.shape = rotated;
+  return true;
+}
+
+function softDrop(board, piece) {
+  return movePiece(board, piece, 0, 1);
+}
+
+function hardDrop(board, piece) {
+  let distance = 0;
+  while (softDrop(board, piece)) distance++;
+  return distance;
+}
+
 function renderBoard(board = emptyBoard()) {
   const rows = ['┌' + '─'.repeat(WIDTH * 2) + '┐'];
   for (let y = 0; y < HEIGHT; y++) {
@@ -78,4 +102,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { WIDTH, HEIGHT, PIECES, emptyBoard, spawnPiece, collides, movePiece, renderBoard, initialScreen };
+module.exports = { WIDTH, HEIGHT, PIECES, emptyBoard, spawnPiece, collides, movePiece, rotatePiece, softDrop, hardDrop, renderBoard, initialScreen };
