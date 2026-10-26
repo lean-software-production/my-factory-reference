@@ -1,7 +1,7 @@
 const readline = require('node:readline');
 const { render, WIDTH } = require('./render');
 const { spawnPiece } = require('./pieces');
-const { createBoard, move, step } = require('./game');
+const { createBoard, move, rotate, hardDrop, step } = require('./game');
 
 const input = process.stdin;
 const output = process.stdout;
@@ -51,7 +51,11 @@ if (!input.isTTY || !output.isTTY) {
     if (key?.name === 'left') move(board, active, -1);
     else if (key?.name === 'right') move(board, active, 1);
     else if (key?.name === 'down') return fall();
-    else return;
+    else if (key?.name === 'up') rotate(board, active);
+    else if (key?.name === 'space') {
+      active = hardDrop(board, active);
+      clearInterval(timer);
+    } else return;
     draw();
   });
 
