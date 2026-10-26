@@ -4,7 +4,7 @@
 - [x] Add a timed falling loop that moves the active piece downward and locks it when it lands.
 - [x] Add keyboard controls for moving left/right and soft-dropping, respecting walls and occupied cells.
 - [x] Add piece rotation with collision handling and a hard-drop control.
-- [ ] Clear completed lines and update the score and line count in the display.
+- [x] Clear completed lines and update the score and line count in the display.
 - [ ] Spawn successive pieces and show game over when a new piece cannot enter the board.
 - [ ] Add restart and quit controls, with reliable terminal cleanup on exit or interruption.
 - [ ] Add automated tests for board rules and a terminal-size check covering the full display, then document how to play.
