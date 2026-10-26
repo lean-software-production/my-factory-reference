@@ -13,8 +13,8 @@ const SHAPES = {
   L: [[2, 0], [0, 1], [1, 1], [2, 1]],
 };
 const kinds = Object.keys(SHAPES);
-const kind = kinds[Math.floor(Math.random() * kinds.length)];
-let active = { kind, x: Math.floor((WIDTH - 4) / 2), y: 0, cells: SHAPES[kind] };
+let active = null;
+let gameOver = false;
 let score = 0;
 let gravity;
 
@@ -39,13 +39,23 @@ function clearLines() {
   score += [0, 100, 300, 500, 800][cleared] || 0;
 }
 
+function spawnPiece() {
+  const kind = kinds[Math.floor(Math.random() * kinds.length)];
+  const next = { kind, x: Math.floor((WIDTH - 4) / 2), y: 0, cells: SHAPES[kind] };
+  if (canPlace(next, next.x, next.y)) active = next;
+  else {
+    active = null;
+    gameOver = true;
+    clearInterval(gravity);
+  }
+}
+
 function lockPiece() {
   for (const [dx, dy] of active.cells) {
     board[active.y + dy][active.x + dx] = active.kind;
   }
   clearLines();
-  active = null; // Spawning the next piece is added in the next gameplay step.
-  clearInterval(gravity);
+  spawnPiece();
 }
 
 function move(dx) {
@@ -96,6 +106,7 @@ function render() {
     '↓    Soft drop',
     'Space Hard drop',
     'Q    Quit',
+    gameOver ? 'GAME OVER' : '',
   ];
   const fallingCells = new Set(active ? active.cells.map(([dx, dy]) => `${active.x + dx},${active.y + dy}`) : []);
   const lines = [`┌${'─'.repeat(WIDTH * 2)}┐`];
@@ -150,5 +161,6 @@ stdin.on('keypress', (_, key) => {
 });
 
 stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H');
+spawnPiece();
 render();
 gravity = setInterval(tick, 700);
