@@ -1,0 +1,40 @@
+/* The replay page: the kit's colours and fonts only (kit/sketchbook.css). */
+
+body { margin: 0; background: var(--sk-paper); color: var(--sk-body-text); font-family: var(--sk-font-body); font-size: 19px; font-variant-ligatures: no-common-ligatures; }
+.wrap { max-width: 1500px; margin: 0 auto; padding: 18px 28px 40px; box-sizing: border-box; }
+h1.sk-title { font-size: clamp(22px, 4vw, 38px); margin: 4px 0 6px; overflow-wrap: anywhere; }
+.head { display: flex; justify-content: space-between; align-items: baseline; gap: 1em; font-family: var(--sk-font-label); font-size: clamp(16px, 2.4vw, 22px); margin: 4px 0; }
+.head #where { overflow-wrap: anywhere; }
+.head #round { white-space: nowrap; }
+
+/* The drawing scales to the width of the page. */
+.stage { position: relative; }
+.stage svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.stage text { font-family: var(--sk-font-label); fill: var(--sk-ink); pointer-events: none; }
+.stage text.name { font-size: 22px; }
+.stage text.model { font-family: var(--sk-font-body); font-size: 15px; fill: var(--sk-slate); }
+.stage text.pill { font-size: 19px; }
+
+/* Machines: plain paper, yellow while working, pale green when done. */
+.node rect { fill: var(--sk-paper); stroke: var(--sk-ink); stroke-width: 3; }
+.node.machine { cursor: pointer; }
+.node.machine:hover rect { stroke-width: 4; }
+.node.done rect { fill: color-mix(in srgb, var(--sk-forest) 14%, var(--sk-paper)); }
+.node.working rect { stroke: var(--sk-mustard-text); stroke-width: 4; fill: color-mix(in srgb, var(--sk-mustard) 45%, var(--sk-paper)); }
+.node.start rect, .node.finish rect { stroke-dasharray: 6 6; }
+.node.finish.lit rect { stroke: var(--sk-forest); stroke-width: 4; fill: color-mix(in srgb, var(--sk-forest) 30%, var(--sk-paper)); }
+.stage text.pill.lit { fill: var(--sk-forest-text); }
+
+/* Edges: slate going on, blue going back, dotted until taken. */
+.edge { fill: none; stroke: var(--sk-slate); stroke-width: 3; }
+.edge.back { stroke: var(--sk-blue); }
+.edge.quiet { stroke-dasharray: 3 7; opacity: .7; }
+.stage text.elabel { font-family: var(--sk-font-body); font-size: 17px; fill: var(--sk-body-text); }
+.elabel-bg { fill: var(--sk-paper); }
+
+/* How often the work has gone along an edge. */
+.badge { display: none; }
+.badge.shown { display: inline; }
+.badge circle { fill: var(--sk-slate); }
+.badge.back circle { fill: var(--sk-blue); }
+.stage .badge text { font-size: 15px; fill: var(--sk-paper); }

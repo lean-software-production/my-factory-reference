@@ -2,12 +2,21 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Replay</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="kit/sketchbook.css">
 <link rel="stylesheet" href="replay.css">
 </head>
 <body>
-<div id="replay"></div>
+<main class="wrap" id="replay">
+  <h1 class="sk-title"><span class="sk-hl" id="title">A run, replayed</span></h1>
+  <div class="head"><span id="where"></span><span id="round"></span></div>
+  <div class="stage" id="stage">
+    <svg id="drawing" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="the assembly line"></svg>
+  </div>
+  <div class="bar" id="bar"></div>
+</main>
 <script src="kit/sketchbook.js"></script>
 <script src="replay.js"></script>
 </body>
