@@ -88,7 +88,7 @@ function clearCompletedRows(board) {
 }
 
 function tick(state) {
-  if (!state.active || state.gameOver) return;
+  if (!state.active || state.gameOver || state.paused) return;
   if (!softDrop(state.board, state.piece)) {
     lockPiece(state.board, state.piece);
     const cleared = clearCompletedRows(state.board);
@@ -125,8 +125,12 @@ function render(state) {
   process.stdout.write('\x1b[2J\x1b[H' + screen + '\n');
 }
 
+function resetGame(state) {
+  Object.assign(state, { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false, paused: false, score: 0, lines: 0, level: 1 });
+}
+
 function main() {
-  const state = { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false, score: 0, lines: 0, level: 1 };
+  const state = { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false, paused: false, score: 0, lines: 0, level: 1 };
   render(state);
   if (!process.stdin.isTTY) return;
   process.stdin.setRawMode(true);
@@ -140,9 +144,7 @@ function main() {
       process.exit(0);
     }
     if (state.gameOver) {
-      if (key.toLowerCase() === 'r') {
-        Object.assign(state, { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false, score: 0, lines: 0, level: 1 });
-      }
+      if (key.toLowerCase() === 'r') resetGame(state);
       render(state);
       return;
     }
@@ -150,7 +152,17 @@ function main() {
       state.active = true;
       state.piece = spawnPiece(state.nextType, state.board);
       state.nextType = Object.keys(PIECES)[Math.floor(Math.random() * Object.keys(PIECES).length)];
+      render(state);
+      return;
     }
+    if (key.toLowerCase() === 'p') state.paused = !state.paused;
+    else if (state.paused) { render(state); return; }
+    else if (key === '\u001b[A' || ['w', 'x'].includes(key.toLowerCase())) rotatePiece(state.board, state.piece);
+    else if (key === '\u001b[B' || key.toLowerCase() === 's') { if (!softDrop(state.board, state.piece)) tick(state); }
+    else if (key === '\u001b[D' || key.toLowerCase() === 'a') movePiece(state.board, state.piece, -1, 0);
+    else if (key === '\u001b[C' || key.toLowerCase() === 'd') movePiece(state.board, state.piece, 1, 0);
+    else if (key === ' ') { const distance = hardDrop(state.board, state.piece); state.score += distance * 2; tick(state); }
+    else if (key.toLowerCase() === 'r') resetGame(state);
     render(state);
   };
   process.stdin.on('data', onKey);
