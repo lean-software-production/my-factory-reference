@@ -1,4 +1,4 @@
-- [ ] Set up an npm project with `npm start` that opens a terminal Tetris screen and exits cleanly.
+- [x] Set up an npm project with `npm start` that opens a terminal Tetris screen and exits cleanly.
 - [ ] Render a bordered 10×20 board and compact status/controls display that fits within 24 terminal rows.
 - [ ] Define the seven tetromino shapes and spawn a visible active piece on the board.
 - [ ] Add a timed falling loop that moves the active piece downward and locks it when it lands.
