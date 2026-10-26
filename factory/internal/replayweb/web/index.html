@@ -14,8 +14,23 @@
   <div class="head"><span id="where"></span><span id="round"></span></div>
   <div class="stage" id="stage">
     <svg id="drawing" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="the assembly line"></svg>
+    <div class="sk-bubble log" id="log" hidden>
+      <div class="log-head"><span id="logname"></span><button type="button" class="log-close" id="logclose" aria-label="close" title="close">✕</button></div>
+      <div class="lines" id="loglines"></div>
+    </div>
   </div>
-  <div class="bar" id="bar"></div>
+  <p class="note" id="note" aria-live="polite"></p>
+  <div class="bar" id="bar">
+    <button type="button" class="sk-btn play" id="play" aria-label="play" title="play">▶&#xFE0E;</button>
+    <div class="timeline" id="timeline"><div class="track" id="track"><b id="fill"></b></div></div>
+    <span class="speeds" role="group" aria-label="speed">
+      <button type="button" class="sk-btn sk-secondary speed" data-speed="1" aria-pressed="false">1×</button>
+      <button type="button" class="sk-btn sk-secondary speed on" data-speed="10" aria-pressed="true">10×</button>
+      <button type="button" class="sk-btn sk-secondary speed" data-speed="60" aria-pressed="false">60×</button>
+    </span>
+    <button type="button" class="sk-btn sk-secondary next" id="next">next hand-off ⏭&#xFE0E;</button>
+    <span class="meta" id="meta"></span>
+  </div>
 </main>
 <script src="kit/sketchbook.js"></script>
 <script src="replay.js"></script>

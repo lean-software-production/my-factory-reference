@@ -402,10 +402,6 @@ function drawEdge(r, edges, labels) {
   return { path, badge, count };
 }
 
-// machineClicked is where a click on a machine lands. The machine's log, in
-// a speech bubble, opens from here; for now it does nothing.
-function machineClicked(name, shape) {}
-
 // ---------- the moment shown ----------
 
 // show draws the run as it stood t seconds in: who is working, who is done
@@ -436,6 +432,304 @@ function show(t) {
     e.count.textContent = String(n);
   });
   view.round.textContent = `round ${f.round}`;
+  showBar(f);
+  showNote();
+  showLog(f);
+}
+
+// ---------- playing ----------
+
+// How the run plays, in run seconds unless named otherwise.
+const PLAY = {
+  lead: 1,          // next hand-off stops this long before the machine starts
+  together: 0.25,   // hand-offs closer than this to t are taken as reached
+  breakShown: 5,    // a stop's line shows for this long after it
+  breakHeldMs: 3000, // and, when playing passes it, for at least this long in real time
+  maxStepMs: 250,   // the most real time one frame of playing counts, as after a hidden tab
+};
+
+let lastTick = 0;
+
+// play plays from t, or from the start again if t is the end.
+function play() {
+  const doc = state.doc;
+  if (!doc || state.playing) return;
+  if (state.t >= doc.total) jump(0);
+  state.playing = true;
+  lastTick = performance.now();
+  showPlaying();
+  requestAnimationFrame(tick);
+}
+
+function pause() {
+  state.playing = false;
+  showPlaying();
+}
+
+// tick moves t on by the real time since the last frame, times the speed,
+// and stops at the end.
+function tick(now) {
+  if (!state.playing) return;
+  const gone = Math.min(Math.max(now - lastTick, 0), PLAY.maxStepMs) / 1000;
+  lastTick = now;
+  const from = state.t, to = Math.min(from + gone * state.speed, state.doc.total);
+  for (const b of state.doc.breaks || []) if (from < b.at && b.at <= to) holdBreak(b);
+  show(to);
+  if (state.t >= state.doc.total) pause();
+  else requestAnimationFrame(tick);
+}
+
+// jump shows t, from a click on the bar rather than from playing.
+function jump(t) {
+  heldBreak = null;
+  show(t);
+}
+
+// showPlaying shows play or pause on the button, whichever a click does.
+function showPlaying() {
+  const b = document.getElementById('play');
+  const does = state.playing ? 'pause' : 'play';
+  b.textContent = state.playing ? '⏸︎' : '▶︎';
+  b.setAttribute('aria-label', does);
+  b.title = does;
+}
+
+function setSpeed(speed) {
+  state.speed = speed;
+  for (const b of document.querySelectorAll('.speed')) {
+    const on = Number(b.dataset.speed) === speed;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
+
+// nextHandoff jumps to just before the next hand-off: the first whose
+// moment, a second early, is after t. Hand-offs a moment apart count as one.
+function nextHandoff() {
+  const t = state.t;
+  const h = (state.doc.handoffs || []).find(h => Math.max(h.at - PLAY.lead, 0) > t + PLAY.together);
+  if (h) jump(h.at - PLAY.lead);
+}
+
+// ---------- the bar ----------
+
+// buildTimeline puts a tick on the timeline for each hand-off, blue for a
+// send-back, and a break where the run stopped and started again, its
+// reason as the tooltip.
+function buildTimeline(doc) {
+  const track = document.getElementById('track');
+  const at = t => `${(doc.total > 0 ? Math.min(Math.max(t / doc.total, 0), 1) : 0) * 100}%`;
+  for (const h of doc.handoffs || []) {
+    const i = document.createElement('i');
+    if (h.sendBack) i.className = 'back';
+    i.style.left = at(h.at);
+    track.appendChild(i);
+  }
+  for (const b of doc.breaks || []) {
+    const s = document.createElement('s');
+    s.style.left = at(b.at);
+    s.title = b.reason;
+    track.appendChild(s);
+  }
+}
+
+// wireBar makes the bar's controls work. Every one works with a click; the
+// space bar playing and pausing is only a shortcut.
+function wireBar() {
+  document.getElementById('play').addEventListener('click', () => (state.playing ? pause() : play()));
+  for (const b of document.querySelectorAll('.speed')) b.addEventListener('click', () => setSpeed(Number(b.dataset.speed)));
+  document.getElementById('next').addEventListener('click', nextHandoff);
+
+  const line = document.getElementById('timeline');
+  const seek = e => {
+    const r = document.getElementById('track').getBoundingClientRect();
+    const part = r.width > 0 ? Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1) : 0;
+    jump(part * state.doc.total);
+  };
+  line.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    line.setPointerCapture(e.pointerId);
+    seek(e);
+  });
+  line.addEventListener('pointermove', e => { if (line.hasPointerCapture(e.pointerId)) seek(e); });
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== ' ' || e.repeat) return;
+    if (e.target instanceof Element && e.target.closest('button, input, select, textarea, [contenteditable]')) return;
+    e.preventDefault();
+    if (state.playing) pause(); else play();
+  });
+}
+
+// steadyMeta keeps the time and tokens as wide as they will ever be, at
+// the end, so that the timeline beside them doesn't twitch as they change.
+function steadyMeta(doc) {
+  const meta = document.getElementById('meta');
+  meta.textContent = `${fmtElapsed(doc.total)} of ${fmtElapsed(doc.total)} · ${(doc.end && doc.end.tokens) || '888.8k'} tokens`;
+  meta.style.minWidth = `${Math.ceil(meta.getBoundingClientRect().width) + 12}px`;
+}
+
+// showBar fills the timeline to t and says how far in the run is.
+function showBar(f) {
+  const total = state.doc.total || 0;
+  document.getElementById('fill').style.width = `${total > 0 ? (state.t / total) * 100 : 0}%`;
+  document.getElementById('meta').textContent = `${fmtElapsed(state.t)} of ${fmtElapsed(total)} · ${f.tokens} tokens`;
+}
+
+// ---------- the line under the drawing ----------
+
+// heldBreak is a stop that playing has just passed, kept on show for a
+// moment of real time: at 60× its five run seconds go by in a blink.
+let heldBreak = null;
+
+function holdBreak(b) {
+  heldBreak = { reason: b.reason, until: performance.now() + PLAY.breakHeldMs };
+  setTimeout(showNote, PLAY.breakHeldMs + 50);
+}
+
+// showNote says, under the drawing, that the run stopped and started again
+// just here, or how it ended once t is the end.
+function showNote() {
+  const doc = state.doc, t = state.t;
+  const near = (doc.breaks || []).filter(b => t >= b.at && t - b.at <= PLAY.breakShown).pop();
+  const held = heldBreak && performance.now() < heldBreak.until ? heldBreak : null;
+  let words = '';
+  if (near || held) words = `Stopped here, and started again: ${(near || held).reason}`;
+  else if (t >= doc.total) words = endWords(doc);
+  document.getElementById('note').textContent = words;
+}
+
+// endWords is how the run ended.
+function endWords(doc) {
+  const e = doc.end || {}, when = fmtElapsed(doc.total);
+  if (e.state === 'finished') return `The run finished in ${when}, using ${e.tokens} tokens.`;
+  if (e.state === 'stopped' || e.state === 'failed') return `The run ${e.state} at ${when}: ${e.reason}`;
+  return `The record ends at ${when}, before the run finished.`;
+}
+
+// ---------- the bubble: a machine's log ----------
+
+// Each machine's lines, in time order, and the bubble open, if one is.
+let linesByMachine = new Map();
+let openLog = null; // { name, label, rect, shown: lines shown, heading }
+
+// Where the bubble goes, in CSS pixels: how far from the machine, how wide
+// its tail is, and how close it may come to the window's edge.
+const BUBBLE = { gap: 16, tail: 19, edge: 8, corner: 14 };
+
+function groupLines(lines) {
+  const by = new Map();
+  for (const l of lines || []) {
+    if (!by.has(l.machine)) by.set(l.machine, []);
+    by.get(l.machine).push(l);
+  }
+  return by;
+}
+
+// countUpTo is how many of lines, in time order, are at or before t.
+function countUpTo(lines, t) {
+  let lo = 0, hi = lines.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (lines[mid].at <= t) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+function wireLog() {
+  document.getElementById('logclose').addEventListener('click', closeLog);
+  addEventListener('resize', placeLog);
+  addEventListener('scroll', placeLog, { passive: true });
+}
+
+// machineClicked opens a machine's log, closes it if it is open, or moves
+// the bubble to it from another machine.
+function machineClicked(name, shape) {
+  if (openLog && openLog.name === name) {
+    closeLog();
+    return;
+  }
+  const part = view.nodes.get(name);
+  openLog = { name, label: part.node.label, rect: shape.querySelector('rect'), shown: -1, heading: '' };
+  const log = document.getElementById('log');
+  log.style.visibility = 'hidden'; // measured and placed before it is seen
+  log.hidden = false;
+  showLog(frameAt(state.doc.frames, state.t));
+  log.style.visibility = '';
+}
+
+function closeLog() {
+  openLog = null;
+  document.getElementById('log').hidden = true;
+}
+
+// showLog brings the open bubble up to t: working or not, and the lines
+// said by then, the newest last and highlighted, scrolled to the bottom.
+function showLog(f) {
+  if (!openLog || !f) return;
+  const heading = `${openLog.label} · ${f.working.includes(openLog.name) ? 'working' : 'last time'}`;
+  const lines = linesByMachine.get(openLog.name) || [];
+  const n = countUpTo(lines, state.t);
+  if (heading === openLog.heading && n === openLog.shown) return;
+  document.getElementById('logname').textContent = heading;
+  if (n !== openLog.shown) {
+    const box = document.getElementById('loglines');
+    if (n === 0) {
+      const p = document.createElement('p');
+      p.className = 'none';
+      p.textContent = 'nothing yet';
+      box.replaceChildren(p);
+    } else {
+      box.replaceChildren(...lines.slice(0, n).map((l, i) => logLine(l, i === n - 1)));
+    }
+    box.scrollTop = box.scrollHeight;
+  }
+  Object.assign(openLog, { heading, shown: n });
+  placeLog();
+}
+
+// logLine is one line of the log: its stamp, then what was said, or the
+// result as a short line after an arrow. All of it set as text.
+function logLine(l, newest) {
+  const p = document.createElement('p');
+  if (newest) p.className = 'now';
+  const stamp = document.createElement('span');
+  stamp.className = 't';
+  stamp.textContent = fmtStamp(l.at);
+  p.appendChild(stamp);
+  if (l.result) {
+    const res = document.createElement('span');
+    res.className = 'res';
+    res.textContent = `→ ${l.text}`;
+    p.appendChild(res);
+  } else {
+    p.appendChild(document.createTextNode(l.text));
+  }
+  return p;
+}
+
+// placeLog puts the bubble above its machine, the tail pointing down at the
+// machine's middle. If there isn't room above in the window, it goes below
+// with the tail pointing up. It is kept inside the window, and if that
+// pulls the tail off the machine, the tail is hidden.
+function placeLog() {
+  if (!openLog) return;
+  const log = document.getElementById('log');
+  const r = openLog.rect.getBoundingClientRect();
+  const s = document.getElementById('stage').getBoundingClientRect();
+  const winW = document.documentElement.clientWidth, winH = window.innerHeight;
+  const w = log.offsetWidth, h = log.offsetHeight;
+  const { gap, tail, edge, corner } = BUBBLE;
+  const above = r.top - h - gap >= edge || r.bottom + h + gap > winH - edge;
+  log.classList.toggle('below', !above);
+  const cx = r.left + r.width / 2;
+  const left = Math.max(Math.min(cx - w / 2, winW - w - edge), edge);
+  const tailX = cx - left - tail / 2;
+  log.classList.toggle('no-tail', tailX < corner || tailX > w - corner - tail);
+  log.style.setProperty('--tail-x', `${tailX}px`);
+  log.style.left = `${left - s.left}px`;
+  log.style.top = `${(above ? r.top - h - gap : r.bottom + gap) - s.top}px`;
 }
 
 // ---------- starting ----------
@@ -463,7 +757,12 @@ async function boot() {
   heading(state.doc);
   await fontsLoaded();
   view = draw(state.doc);
-  show(570); // for now, the moment the approved mockup shows
+  linesByMachine = groupLines(state.doc.lines);
+  buildTimeline(state.doc);
+  steadyMeta(state.doc);
+  wireBar();
+  wireLog();
+  show(0); // paused at the start, so there's time to talk first
 }
 
 boot().catch(err => {
