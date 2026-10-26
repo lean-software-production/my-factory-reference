@@ -73,3 +73,22 @@ func TestALiveGitsIndexLockIsLeftAlone(t *testing.T) {
 		t.Errorf("the lock a running Git holds was removed: %v", err)
 	}
 }
+
+// A Git can give up its lock between the factory finding it and removing
+// it as stale. The lock is gone, which is all the factory wanted.
+func TestALockGivenUpAsItIsRemovedIsNoFailure(t *testing.T) {
+	dir := repoWithChange(t)
+	lock := filepath.Join(dir, ".git", "index.lock")
+	if err := os.WriteFile(lock, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer func(was func() bool) { gitIsRunning = was }(gitIsRunning)
+	gitIsRunning = func() bool {
+		os.Remove(lock) // the Git finishes just as it is looked for
+		return false
+	}
+
+	if err := clearIndexLock(dir); err != nil {
+		t.Errorf("a lock that went as it was removed failed the commit: %v", err)
+	}
+}

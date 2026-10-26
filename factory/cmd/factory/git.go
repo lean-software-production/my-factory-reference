@@ -88,7 +88,11 @@ func clearIndexLock(dir string) error {
 			return nil // let go in the meantime
 		}
 		if !gitIsRunning() {
-			return os.Remove(path)
+			// A Git that has just finished may have taken it already.
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			return nil
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("%s is held by a running git: the factory waited %s for it", path, lockWait)
@@ -98,7 +102,7 @@ func clearIndexLock(dir string) error {
 
 // gitIsRunning says whether any Git is running. Where that can't be told it
 // says yes, so that no lock is taken for stale.
-func gitIsRunning() bool {
+var gitIsRunning = func() bool {
 	err := exec.Command("pgrep", "-x", "git").Run()
 	var exit *exec.ExitError
 	return err == nil || !errors.As(err, &exit)
