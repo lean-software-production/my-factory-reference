@@ -49,6 +49,9 @@ func Load(name, dir string) (Machine, error) {
 	if c.Harness == "" {
 		c.Harness = DefaultHarness
 	}
+	if filepath.Base(c.Harness) == "pi" {
+		return Machine{}, fmt.Errorf("the %s's harness pi is not an ACP agent: use %s", name, DefaultHarness)
+	}
 	if provider, _, _ := strings.Cut(c.Model, "/"); provider == "" || provider == c.Model {
 		return Machine{}, fmt.Errorf(`the %s's machine.json names no model as "<provider>/<model>" (%s)`, name, filepath.Join(dir, "machine.json"))
 	}

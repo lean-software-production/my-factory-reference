@@ -1534,3 +1534,13 @@ No `homework-*` tag and not the `2026.10.26` tag were moved, and
   JSON object still fails with the same message (`orchestration.feature:202`
   and `fan-out.feature:105` pass), a JSON line on its own is taken as it
   was, and a JSON line above a prose last line is still taken.
+- **A harness that never answers fails in 30s.** Plain `pi` is not an ACP
+  agent, so a machine run by it never answered `initialize` and the run
+  hung. The factory now gives `initialize` and `session/new` 30 seconds
+  each (not `session/prompt`, which takes as long as the turn does), then
+  fails, naming the machine and harness, and stops the agent's process
+  group as it does for any machine. And `machine.json` naming `pi` is
+  refused when the line is read: "the planner's harness pi is not an ACP
+  agent: use pi-rpc-acp". `tetris/tetris-005`'s lines still name `pi`:
+  they are homework 005's history and nothing reads them now (no test,
+  script or feature names `tetris-005`).

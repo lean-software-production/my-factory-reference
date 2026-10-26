@@ -91,6 +91,9 @@ func (m Machine) Run(ctx context.Context, dir, prompt string, env []string, said
 	case ctx.Err() != nil:
 		p.stop()
 		return Turn{}, fmt.Errorf("the %s (%s) was stopped: %v", m.Name, m.Harness, context.Cause(ctx))
+	case errors.As(err, new(unanswered)):
+		p.stop()
+		return Turn{}, fmt.Errorf("the %s (%s) failed: %v", m.Name, m.Harness, err)
 	case errors.Is(err, errGone):
 		p.stop()
 		return Turn{}, fmt.Errorf("the %s (%s) stopped before it answered (%v)%s", m.Name, m.Harness, exitStatus(p.err), lastWords(complaints))
@@ -144,12 +147,12 @@ type message struct {
 // started in dir, and the prompt is sent in it. It returns what the turn
 // spent.
 func (s *session) converse(ctx context.Context, p *process, dir, prompt string, steering *Steering) (Usage, error) {
-	if _, err := s.call(ctx, p, "initialize", map[string]any{
+	if _, err := s.start(ctx, p, "initialize", map[string]any{
 		"protocolVersion": 1, "clientCapabilities": map[string]any{},
 	}); err != nil {
 		return Usage{}, err
 	}
-	raw, err := s.call(ctx, p, "session/new", map[string]any{"cwd": dir, "mcpServers": []any{}})
+	raw, err := s.start(ctx, p, "session/new", map[string]any{"cwd": dir, "mcpServers": []any{}})
 	if err != nil {
 		return Usage{}, err
 	}
@@ -195,6 +198,29 @@ func (s *session) call(ctx context.Context, p *process, method string, params an
 		return nil, errGone
 	}
 	return s.await(ctx, p, id)
+}
+
+// start is a call of one of the requests that start the agent, which it
+// must answer within startDeadline.
+func (s *session) start(ctx context.Context, p *process, method string, params any) (json.RawMessage, error) {
+	deadline, cancel := context.WithTimeout(ctx, startDeadline)
+	defer cancel()
+	raw, err := s.call(deadline, p, method, params)
+	if err != nil && ctx.Err() == nil && deadline.Err() != nil {
+		return nil, unanswered{method, startDeadline}
+	}
+	return raw, err
+}
+
+// unanswered is an agent not answering a request that starts it within
+// startDeadline.
+type unanswered struct {
+	method string
+	within time.Duration
+}
+
+func (u unanswered) Error() string {
+	return fmt.Sprintf("it did not answer %s within %v: is it an ACP agent?", u.method, u.within)
 }
 
 // request sends a request, and returns its id.
@@ -445,3 +471,8 @@ func signalGroup(p *os.Process, sig syscall.Signal) error {
 	}
 	return err
 }
+
+// startDeadline is how long an agent is given to answer each of the
+// requests that start it, initialize and session/new. One that is not an
+// ACP agent, as plain pi is not, never answers them.
+var startDeadline = 30 * time.Second
