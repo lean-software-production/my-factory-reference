@@ -91,7 +91,10 @@ function tick(state) {
   if (!state.active || state.gameOver) return;
   if (!softDrop(state.board, state.piece)) {
     lockPiece(state.board, state.piece);
-    clearCompletedRows(state.board);
+    const cleared = clearCompletedRows(state.board);
+    state.lines = (state.lines || 0) + cleared;
+    state.level = Math.floor(state.lines / 10) + 1;
+    state.score = (state.score || 0) + ([0, 100, 300, 500, 800][cleared] || 0) * state.level;
     state.piece = spawnPiece(state.nextType, state.board);
     state.nextType = Object.keys(PIECES)[Math.floor(Math.random() * Object.keys(PIECES).length)];
     if (!state.piece) state.gameOver = true;
@@ -117,13 +120,13 @@ function initialScreen() {
 
 function render(state) {
   const screen = state?.active
-    ? renderBoard(state.board, state.piece) + (state.gameOver ? '\nGAME OVER' : '\nTerminal Tetris')
+    ? renderBoard(state.board, state.piece) + `\nScore: ${state.score || 0}  Lines: ${state.lines || 0}  Level: ${state.level || 1}` + (state.gameOver ? '\nGAME OVER' : '\nTerminal Tetris')
     : initialScreen();
   process.stdout.write('\x1b[2J\x1b[H' + screen + '\n');
 }
 
 function main() {
-  const state = { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false };
+  const state = { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false, score: 0, lines: 0, level: 1 };
   render(state);
   if (!process.stdin.isTTY) return;
   process.stdin.setRawMode(true);
