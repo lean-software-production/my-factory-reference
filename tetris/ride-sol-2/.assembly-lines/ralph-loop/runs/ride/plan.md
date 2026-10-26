@@ -3,7 +3,7 @@
 - [x] Define the seven tetromino shapes and display a falling piece on the board.
 - [x] Add timed gravity, collision detection, and locking pieces into the board.
 - [x] Add keyboard controls to move left/right, rotate, and drop pieces.
-- [ ] Clear completed lines and update the score shown in the display.
+- [x] Clear completed lines and update the score shown in the display.
 - [ ] Spawn successive pieces and show game over when a new piece cannot fit.
 - [ ] Add restart and quit controls, including terminal cleanup on exit.
 - [ ] Keep the live display stable within 24 rows across play, scoring, and game over.
