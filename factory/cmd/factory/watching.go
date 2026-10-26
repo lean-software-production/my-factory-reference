@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,10 @@ const (
 	pollEvery   = 20 * time.Millisecond
 	statusEvery = 500 * time.Millisecond
 )
+
+// interrupted is the exit status of watching that was interrupted, as a
+// shell reports a process killed by SIGINT.
+const interrupted = 130
 
 // watchCommand shows a run: everything its record holds so far, then what
 // is added to it, until the run has ended. It fails unless the run
@@ -39,7 +44,18 @@ func watchCommand(args []string) error {
 		dir: filepath.Join(i.target, linesFolder, line, "runs", i.run)}
 	w := watch.New(os.Stdout, line)
 	w.Names(machineNames(filepath.Join(i.target, linesFolder, line))...)
-	last, err := follow(f, w)
+	// Watching can be interrupted. Either way it ends, the pinned line is
+	// wiped before anything more is said.
+	ctx, stop := stoppedBySignals()
+	defer stop()
+	defer w.Close()
+	last, err := follow(ctx, f, w)
+	if cerr := w.Close(); err == nil {
+		err = cerr
+	}
+	if errors.Is(err, context.Canceled) {
+		return exitStatus(interrupted)
+	}
 	if err != nil {
 		return err
 	}
@@ -54,9 +70,10 @@ func watchCommand(args []string) error {
 }
 
 // follow renders the run's record from its start, then what is added to it,
-// until the factory is not running the run. It returns the last event about
-// the run starting or ending.
-func follow(f runFolder, w *watch.Watcher) (watch.Event, error) {
+// until the factory is not running the run, or ctx is done, when it returns
+// the context's error. It returns the last event about the run starting or
+// ending.
+func follow(ctx context.Context, f runFolder, w *watch.Watcher) (watch.Event, error) {
 	file, err := os.Open(f.record())
 	if errors.Is(err, os.ErrNotExist) {
 		return watch.Event{}, fmt.Errorf("the %q run has no record", f.name)
@@ -73,6 +90,9 @@ func follow(f runFolder, w *watch.Watcher) (watch.Event, error) {
 		settled bool      // the factory is not running the run: the record is all there will be
 	)
 	for {
+		if err := ctx.Err(); err != nil {
+			return last, err
+		}
 		line, err := r.ReadBytes('\n')
 		partial = append(partial, line...)
 		if err == nil {

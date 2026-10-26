@@ -2,6 +2,7 @@ package watch
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -246,11 +247,24 @@ func TestMachinesHaveStableColours(t *testing.T) {
 	if strings.Count(out.String(), c2+"reviewer_2") < 3 {
 		t.Errorf("reviewer_2 changed colour:\n%q", out.String())
 	}
-	// More machines than colours wrap round, and never run out.
-	var many bytes.Buffer
-	mw := styled(&many, "big")
-	for i := 0; i < len(palette)+3; i++ {
-		render(t, mw, Event{Kind: Text, Machine: strings.Repeat("m", i+1), Text: "x"})
+}
+
+// More machines than colours wrap round, and never run out.
+func TestColoursWrapRoundForMoreMachinesThanColours(t *testing.T) {
+	var out bytes.Buffer
+	wt := styled(&out, "big")
+	n := len(palette) + 3
+	for i := 1; i <= n; i++ {
+		render(t, wt, Event{Kind: Text, Machine: fmt.Sprintf("m%d", i), Text: "x"})
+	}
+	colour := func(i int) string { return colourOf(t, out.String(), fmt.Sprintf("m%d", i)) }
+	for i := 1; i <= 3; i++ {
+		if colour(i) == colour(i+1) {
+			t.Errorf("m%d and m%d share a colour", i, i+1)
+		}
+		if got, want := colour(len(palette)+i), colour(i); got != want {
+			t.Errorf("machine %d is coloured %q, not %q as machine %d is", len(palette)+i, got, want, i)
+		}
 	}
 }
 
@@ -308,8 +322,55 @@ func TestTerminalLooksRightForTokensToldAndTheEnd(t *testing.T) {
 			t.Errorf("missing %q in:\n%q", want, got)
 		}
 	}
-	if strings.HasSuffix(got, reset) && strings.Contains(got[strings.LastIndex(got, "\n"):], "▶") {
-		t.Errorf("the pinned line is still there after the run ended:\n%q", got)
+	if after := got[strings.LastIndex(got, wipe):]; strings.Contains(after, "▶") {
+		t.Errorf("the pinned line is drawn again after the run ended:\n%q", after)
+	}
+	if !strings.HasSuffix(got, "\n") {
+		t.Errorf("the output does not end with a line ending:\n%q", got)
+	}
+}
+
+// Closing a watcher whose pinned line is on the screen wipes it, so that
+// whatever comes next starts on a clean line. Closing it again does nothing.
+func TestCloseWipesThePinnedLine(t *testing.T) {
+	var out bytes.Buffer
+	wt := styled(&out, "careful")
+	render(t, wt, Event{Kind: Run, Run: "tetris", State: Started})
+	out.Reset()
+	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != wipe {
+		t.Errorf("closing wrote %q, not a wipe", out.String())
+	}
+	out.Reset()
+	if err := wt.Close(); err != nil || out.Len() != 0 {
+		t.Errorf("closing again: %v, wrote %q", err, out.String())
+	}
+	// And the pinned line is not drawn again after it.
+	if err := wt.Tick(time.Now().Add(time.Hour)); err != nil || out.Len() != 0 {
+		t.Errorf("a tick after closing: %v, wrote %q", err, out.String())
+	}
+}
+
+// A watcher that has nothing pinned writes nothing on closing: one whose
+// run has ended, and one that is plain.
+func TestCloseWritesNothingWhenNothingIsPinned(t *testing.T) {
+	var out bytes.Buffer
+	wt := styled(&out, "careful")
+	render(t, wt,
+		Event{Kind: Run, Run: "tetris", State: Started},
+		Event{Kind: Run, Run: "tetris", State: Finished})
+	out.Reset()
+	if err := wt.Close(); err != nil || out.Len() != 0 {
+		t.Errorf("after the run ended: %v, wrote %q", err, out.String())
+	}
+	var plain bytes.Buffer
+	pw := New(&plain, "careful")
+	render(t, pw, Event{Kind: Run, Run: "tetris", State: Started})
+	plain.Reset()
+	if err := pw.Close(); err != nil || plain.Len() != 0 {
+		t.Errorf("plain: %v, wrote %q", err, plain.String())
 	}
 }
 

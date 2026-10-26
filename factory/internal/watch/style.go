@@ -115,3 +115,11 @@ func (wt *Watcher) columns() int {
 	}
 	return wt.cols()
 }
+
+// Close ends the watching: it wipes the pinned line, if it is on the
+// screen, so that the terminal is left on a clean line however the watching
+// ended, and draws it no more. It does nothing the second time.
+func (wt *Watcher) Close() error {
+	wt.live = false
+	return wt.write(wt.unpin())
+}

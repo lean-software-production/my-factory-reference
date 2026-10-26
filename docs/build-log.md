@@ -1287,3 +1287,14 @@ binary a version.
   advanced `task 0/3` to `task 3/3` with its clock, the three reviewers got
   three colours, and piped to a file the same record printed plain lines.
   The proxy is a scratch tool and isn't in the repository.
+- **Fix after review: the terminal is restored when `watch` ends early.**
+  The review found `watch` could end with the pinned line still on the
+  screen: the "its record does not say how it ended" path, any error from
+  `follow`, and Ctrl-C (so the shell's prompt landed on the pinned line).
+  `(*Watcher).Close` now wipes the pinned line and draws it no more (once;
+  nothing is written when plain or when nothing is pinned). `watch` closes
+  the watcher before it says anything more, and stops on SIGINT, SIGTERM or
+  SIGHUP (unless the signal was ignored at start, as with the rest of the
+  factory), exiting 130. Two vacuous tests were rewritten too.
+  `TestWatchEndedEarlyLeavesNoPinnedLine` runs `watch` in a pty and ends it
+  with ^C, and by killing the daemon; with `Close` doing nothing, both fail.
