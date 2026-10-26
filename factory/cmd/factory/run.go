@@ -325,17 +325,43 @@ func whatIsRunning(machines []string) string {
 	return strings.Join(machines[:last], ", ") + " and " + machines[last] + " are what is running"
 }
 
-// lastResult finds the last line of the answer that is a JSON object.
+// lastResult finds the last line of the answer that is a JSON object. The
+// last non-blank line may instead end with one after some prose: the result
+// is then the line from the first "{" that starts a JSON object running to
+// the end of the line.
 func lastResult(answer string) (string, result) {
 	lines := strings.Split(answer, "\n")
+	last := true
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
-		var res result
-		if json.Unmarshal([]byte(line), &res) == nil && res != nil {
+		if line == "" {
+			continue
+		}
+		if res := jsonObject(line); res != nil {
 			return line, res
+		}
+		if last {
+			last = false
+			for j, c := range line {
+				if c != '{' {
+					continue
+				}
+				if res := jsonObject(line[j:]); res != nil {
+					return line[j:], res
+				}
+			}
 		}
 	}
 	return "", nil
+}
+
+// jsonObject reads text that is a JSON object, or returns nil.
+func jsonObject(text string) result {
+	var res result
+	if json.Unmarshal([]byte(text), &res) != nil {
+		return nil
+	}
+	return res
 }
 
 // loadMachines reads the folders of the machines on the line.

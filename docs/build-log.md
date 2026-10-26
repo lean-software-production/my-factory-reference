@@ -1512,3 +1512,25 @@ other ride targets; the factory committed its work and its run folder here.
 - **Cleanup**: `factory stop` stopped the daemon (the daemon stays up after
   a run by design, and the run said "not running"); `pgrep` found no daemon,
   `pi-rpc-acp` or `pi` after.
+
+## Final review
+
+The whole-branch review's findings, fixed after the `2026.10.26` build.
+No `homework-*` tag and not the `2026.10.26` tag were moved, and
+`factory/spec/` is as homework 8 left it.
+
+- **Results after prose, on the last line, are read.** The release ride's
+  first attempt failed when the doer ended its answer with `...behavior.
+  {"task":"gravity"}`. Two fixes. The ralph-loop machines' `AGENTS.md` now
+  say: "End with a blank line, then the result alone on the last line:
+  nothing before it on that line and nothing after it." And the factory is
+  more lenient than the homework text, which asks for a line of JSON on
+  its own: on the last non-blank line only, if the line isn't itself a JSON
+  object, it takes the line from the first `{` that starts one through to
+  the end of the line (`see {x} then {"complete":true}` gives
+  `{"complete":true}`). Why: a model that puts its result after a sentence
+  has answered, and failing a student's first ride on that slip costs more
+  than reading it. Everything else is as before: an answer in prose with no
+  JSON object still fails with the same message (`orchestration.feature:202`
+  and `fan-out.feature:105` pass), a JSON line on its own is taken as it
+  was, and a JSON line above a prose last line is still taken.

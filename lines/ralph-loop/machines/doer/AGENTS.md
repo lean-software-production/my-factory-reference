@@ -22,4 +22,5 @@ there. The product goes in the folder you are working in, not there.
 ## Your result
 
 Finish your answer with your result, as the factory asks for it: one line
-of JSON, on its own. "task" names the task you did.
+of JSON. End with a blank line, then the result alone on the last line:
+nothing before it on that line and nothing after it. "task" names the task you did.

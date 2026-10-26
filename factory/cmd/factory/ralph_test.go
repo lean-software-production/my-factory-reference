@@ -67,3 +67,19 @@ func TestTheRalphLoopPlannerKeepsThePlanAndReportsProgress(t *testing.T) {
 		}
 	}
 }
+
+// Each machine on the line ends its answer with its result alone on the
+// last line, so the factory reads it whatever prose comes before.
+func TestTheRalphLoopMachinesEndWithTheResultAloneOnTheLastLine(t *testing.T) {
+	for _, name := range []string{"planner", "doer"} {
+		raw, err := os.ReadFile(filepath.Join(ralphLoop, "machines", name, "AGENTS.md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.Join(strings.Fields(string(raw)), " ")
+		want := "End with a blank line, then the result alone on the last line: nothing before it on that line and nothing after it."
+		if !strings.Contains(text, want) {
+			t.Errorf("the %s's AGENTS.md lacks %q", name, want)
+		}
+	}
+}

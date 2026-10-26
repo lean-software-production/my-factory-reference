@@ -49,7 +49,8 @@ there. The product goes in the folder you are working in, not there.
 ## Your result
 
 Finish your answer with your result, as the factory asks for it: one line
-of JSON, on its own. "complete" is true if every task in the plan is done
+of JSON. End with a blank line, then the result alone on the last line:
+nothing before it on that line and nothing after it. "complete" is true if every task in the plan is done
 and false if any is left. "progress" counts the tasks in the plan:
 "total" is how many there are and "done" is how many are done. For
 example, with five of twelve tasks done:
