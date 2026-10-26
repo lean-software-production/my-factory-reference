@@ -1692,3 +1692,14 @@ suite reads, has no bar and is as it was, minus one line (see below).
   99 columns for the whole row; at 80 it reads `start ▸ planner ▸ doer ▸
   [reviewer_1 reviewer_2 reviewer_3] ▸ synthes…  round 1`. Rows 1 and 3
   are cut with `…` at the end.
+
+## The ride's line renamed: implement-with-ralph-loop, and its doer ralph
+
+David named them on 2026-10-26. `lines/ralph-loop/` is now
+`lines/implement-with-ralph-loop/`, and its doer's folder is `machines/ralph/`,
+so its route reads `start ▸ planner ▸ ralph ↺ planner`. `bin/ride` copies the
+line under its new name and runs it with `--line implement-with-ralph-loop`.
+Ralph's `AGENTS.md` keeps its `# Doer` heading: it says what the machine is
+for, and the factory finds every role from the graph, never from a name. The
+planner's instructions now speak of ralph. Earlier sections of this log, and
+the ride targets already made, keep the old names.

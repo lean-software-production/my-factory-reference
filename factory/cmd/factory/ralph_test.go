@@ -8,11 +8,12 @@ import (
 	"testing"
 )
 
-var ralphLoop = filepath.Join("..", "..", "..", "lines", "ralph-loop")
+var ralphLoop = filepath.Join("..", "..", "..", "lines", "implement-with-ralph-loop")
 
-// The ride's line is a planner and a doer, with no validator and no fan
-// out: the planner sends work to the doer until it is complete, the doer
-// sends it back, and each machine runs pi on the model it names.
+// The ride's line, implement-with-ralph-loop, is a planner and ralph, its
+// doer, with no validator and no fan out: the planner sends work to ralph
+// until it is complete, ralph sends it back, and each machine runs pi on
+// the model it names.
 func TestTheRalphLoopLineIsAPlannerAndADoer(t *testing.T) {
 	line, err := loadAssemblyLine(ralphLoop)
 	if err != nil {
@@ -23,7 +24,7 @@ func TestTheRalphLoopLineIsAPlannerAndADoer(t *testing.T) {
 	}
 	machines := line.machinesOn()
 	slices.Sort(machines)
-	if !slices.Equal(machines, []string{"doer", "planner"}) {
+	if !slices.Equal(machines, []string{"planner", "ralph"}) {
 		t.Errorf("the machines on the line are %v", machines)
 	}
 	for _, name := range machines {
@@ -38,14 +39,14 @@ func TestTheRalphLoopLineIsAPlannerAndADoer(t *testing.T) {
 			t.Errorf("the %s's machine.json is %s", name, raw)
 		}
 	}
-	if next, err := line.next("planner", result{"complete": false}); err != nil || next != "doer" {
+	if next, err := line.next("planner", result{"complete": false}); err != nil || next != "ralph" {
 		t.Errorf("an incomplete plan goes to %q (%v)", next, err)
 	}
 	if next, err := line.next("planner", result{"complete": true}); err != nil || next != finish {
 		t.Errorf("a complete plan goes to %q (%v)", next, err)
 	}
-	if next, err := line.next("doer", result{"task": "one"}); err != nil || next != "planner" {
-		t.Errorf("the doer's work goes to %q (%v)", next, err)
+	if next, err := line.next("ralph", result{"task": "one"}); err != nil || next != "planner" {
+		t.Errorf("ralph's work goes to %q (%v)", next, err)
 	}
 }
 
@@ -75,7 +76,7 @@ func TestTheRalphLoopPlannerKeepsThePlan(t *testing.T) {
 // Each machine on the line ends its answer with its result alone on the
 // last line, so the factory reads it whatever prose comes before.
 func TestTheRalphLoopMachinesEndWithTheResultAloneOnTheLastLine(t *testing.T) {
-	for _, name := range []string{"planner", "doer"} {
+	for _, name := range []string{"planner", "ralph"} {
 		raw, err := os.ReadFile(filepath.Join(ralphLoop, "machines", name, "AGENTS.md"))
 		if err != nil {
 			t.Fatal(err)

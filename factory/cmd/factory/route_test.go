@@ -27,10 +27,10 @@ func routeOfFile(t *testing.T, dir string) *assemblyLine {
 // machine already written come last, after one arrow.
 func TestTheRouteOfTheRealLines(t *testing.T) {
 	for name, tc := range map[string]struct{ dir, want, planner string }{
-		"ralph-loop":       {ralphLoop, "start ▸ planner ▸ doer ↺ planner", "planner"},
-		"quick":            {filepath.Join(tetris007, "quick"), "start ▸ planner ▸ doer ↺ planner", "planner"},
-		"careful":          {filepath.Join(tetris007, "careful"), "start ▸ planner ▸ doer ▸ validator ↺ doer, planner", "planner"},
-		"three-big-brains": {filepath.Join(tetris007, "three-big-brains"), "start ▸ planner ▸ doer ▸ [reviewer_1 reviewer_2 reviewer_3] ▸ synthesiser ↺ doer, planner", "planner"},
+		"implement-with-ralph-loop": {ralphLoop, "start ▸ planner ▸ ralph ↺ planner", "planner"},
+		"quick":                     {filepath.Join(tetris007, "quick"), "start ▸ planner ▸ doer ↺ planner", "planner"},
+		"careful":                   {filepath.Join(tetris007, "careful"), "start ▸ planner ▸ doer ▸ validator ↺ doer, planner", "planner"},
+		"three-big-brains":          {filepath.Join(tetris007, "three-big-brains"), "start ▸ planner ▸ doer ▸ [reviewer_1 reviewer_2 reviewer_3] ▸ synthesiser ↺ doer, planner", "planner"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			route := routeOfFile(t, tc.dir).route()
@@ -121,8 +121,8 @@ func TestARouteOfALineThatCannotBeReadIsEmpty(t *testing.T) {
 	if got := routeOf(dir); got.String() != "start" {
 		t.Errorf("a broken graph gave %q", got.String())
 	}
-	if got := routeOf(ralphLoop).String(); got != "start ▸ planner ▸ doer ↺ planner" {
-		t.Errorf("the ralph-loop folder gave %q", got)
+	if got := routeOf(ralphLoop).String(); got != "start ▸ planner ▸ ralph ↺ planner" {
+		t.Errorf("the implement-with-ralph-loop folder gave %q", got)
 	}
 }
 

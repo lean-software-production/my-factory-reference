@@ -10,7 +10,7 @@ import (
 
 // The status bar is three rows pinned at the foot of a terminal:
 //
-//	ride on ralph-loop · tetris/release-ride-3
+//	ride on implement-with-ralph-loop · tetris/release-ride-3
 //	start ▸ planner ▸ doer ↺ planner                                round 2
 //	2m 14s · planner 31.0k · doer 58.2k · run 89.2k tokens
 //

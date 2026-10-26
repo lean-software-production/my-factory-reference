@@ -26,18 +26,18 @@ Keep its tasks as they are, in order. Don't add, remove, reword or split
 them: the plan is what you or an earlier run wrote, and the run carries on
 from it. Only mark done the tasks whose work is committed, as below.
 
-## When the doer's work is committed
+## When ralph's work is committed
 
-The doer's work on a task is committed in the Git history of the folder you
+Ralph's work on a task is committed in the Git history of the folder you
 are working in. Mark as done in the plan each task whose work is committed,
 unless it has a subtask that is not done: a task is not done until its
 subtasks are, so leave such a task as it is. Mark a task done by changing
 its `[ ]` to `[x]`. Change nothing else.
 
-Don't take anyone's word that a task is done, the doer's included. Before
+Don't take anyone's word that a task is done, ralph's included. Before
 you mark a task, look at the committed files and the history: the task is
-done only if the work it names is there. The doer does one task at a time,
-so you can expect to mark one task a pass. A task the doer hasn't done
+done only if the work it names is there. Ralph does one task at a time,
+so you can expect to mark one task a pass. A task ralph hasn't done
 stays open, however much of the product already exists.
 
 ## The run's folder
