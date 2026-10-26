@@ -1,0 +1,10 @@
+- [ ] Set up an npm project with `npm start` that opens a terminal Tetris screen and exits cleanly.
+- [ ] Render a bordered 10×20 board and compact status/controls display that fits within 24 terminal rows.
+- [ ] Define the seven tetromino shapes and spawn a visible active piece on the board.
+- [ ] Add a timed falling loop that moves the active piece downward and locks it when it lands.
+- [ ] Add keyboard controls for moving left/right and soft-dropping, respecting walls and occupied cells.
+- [ ] Add piece rotation with collision handling and a hard-drop control.
+- [ ] Clear completed lines and update the score and line count in the display.
+- [ ] Spawn successive pieces and show game over when a new piece cannot enter the board.
+- [ ] Add restart and quit controls, with reliable terminal cleanup on exit or interruption.
+- [ ] Add automated tests for board rules and a terminal-size check covering the full display, then document how to play.
