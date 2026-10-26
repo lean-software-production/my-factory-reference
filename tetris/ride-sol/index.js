@@ -2,6 +2,8 @@
 
 'use strict';
 
+const readline = require('node:readline');
+
 const WIDTH = 10;
 const HEIGHT = 20;
 
@@ -82,15 +84,30 @@ render();
 
 if (process.stdin.isTTY) {
   const gravity = setInterval(tick, 700);
+  readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
-  process.stdin.on('data', (key) => {
-    if (key.toString().toLowerCase() === 'q' || key.toString() === '\u0003') {
-      process.exit();
-    }
-  });
-  process.on('exit', () => {
+
+  function cleanup() {
     clearInterval(gravity);
     process.stdin.setRawMode(false);
+    process.stdin.pause();
+  }
+
+  process.stdin.on('keypress', (character, key) => {
+    if (key.ctrl && key.name === 'c' || key.name === 'q') {
+      cleanup();
+      process.stdout.write('\n');
+      process.exit(0);
+    }
+    if (!activePiece) return;
+    const dx = key.name === 'left' ? -1 : key.name === 'right' ? 1 : 0;
+    if (dx && canPlace(activePiece, activePiece.x + dx, activePiece.y)) {
+      activePiece.x += dx;
+      render();
+    } else if (key.name === 'down') {
+      tick();
+    }
   });
+  process.on('exit', cleanup);
 }
