@@ -6,8 +6,10 @@ function render(board, score, piece = null, gameOver = false) {
   const sidebar = {
     1: `Score: ${score}`,
     3: 'Controls:',
-    4: 'Q  Quit',
-    6: gameOver ? 'Game over' : '',
+    4: 'Left/Right or A/D  Move',
+    5: 'Down or S  Soft drop',
+    6: 'Q  Quit',
+    8: gameOver ? 'Game over' : '',
   };
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
   const lines = [border];

@@ -18,6 +18,12 @@ function canPlace(board, piece, x = piece.x, y = piece.y, cells = piece.cells) {
   });
 }
 
+function move(game, dx) {
+  if (game.gameOver || !canPlace(game.board, game.piece, game.piece.x + dx)) return false;
+  game.piece.x += dx;
+  return true;
+}
+
 function tick(game) {
   if (game.gameOver) return;
   if (canPlace(game.board, game.piece, game.piece.x, game.piece.y + 1)) {
@@ -32,4 +38,4 @@ function tick(game) {
   if (!canPlace(game.board, game.piece)) game.gameOver = true;
 }
 
-module.exports = { createGame, canPlace, tick };
+module.exports = { createGame, canPlace, move, tick };

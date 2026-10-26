@@ -1,6 +1,6 @@
 const readline = require('node:readline');
 const { render } = require('./render');
-const { createGame, tick } = require('./game');
+const { createGame, move, tick } = require('./game');
 
 function start() {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -31,7 +31,18 @@ function start() {
   }
 
   function onKey(_text, key) {
-    if (key && (key.name === 'q' || (key.ctrl && key.name === 'c'))) close();
+    if (!key) return;
+    if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+      close();
+      return;
+    }
+    if (game.gameOver) return;
+    if (key.name === 'left' || key.name === 'a') move(game, -1);
+    else if (key.name === 'right' || key.name === 'd') move(game, 1);
+    else if (key.name === 'down' || key.name === 's') tick(game);
+    else return;
+    draw();
+    if (game.gameOver) clearInterval(timer);
   }
 
   readline.emitKeypressEvents(input);
