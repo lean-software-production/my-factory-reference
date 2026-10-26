@@ -1,4 +1,5 @@
 const readline = require('node:readline');
+const { render } = require('./render');
 
 const input = process.stdin;
 const output = process.stdout;
@@ -34,5 +35,5 @@ if (!input.isTTY || !output.isTTY) {
   });
 
   output.write('\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J'); // Alternate screen, hide cursor.
-  output.write('TETRIS\r\n\r\nPress Q to quit.');
+  output.write(render());
 }
