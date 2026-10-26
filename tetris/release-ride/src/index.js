@@ -5,7 +5,7 @@ const { createGame, move, rotate, tick, hardDrop } = require('./game');
 const game = createGame();
 function draw() {
   if (process.stdout.isTTY) process.stdout.write('\x1b[H');
-  process.stdout.write(render(game.board, game.score, game.piece) + '\n');
+  process.stdout.write(render(game.board, game.score, game.piece, game.gameOver) + '\n');
 }
 
 if (process.stdout.isTTY) process.stdout.write('\x1b[2J');

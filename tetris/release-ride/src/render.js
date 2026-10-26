@@ -1,7 +1,7 @@
 const WIDTH = 10;
 const HEIGHT = 20;
 
-function render(board, score = 0, piece = null) {
+function render(board, score = 0, piece = null, gameOver = false) {
   const falling = new Set(piece ? piece.cells.map(([x, y]) => `${piece.x + x},${piece.y + y}`) : []);
   const sidebar = [
     'Score: ' + score,
@@ -13,6 +13,8 @@ function render(board, score = 0, piece = null) {
     'Space       hard drop',
     'R           restart',
     'Q           quit',
+    '',
+    ...(gameOver ? ['GAME OVER'] : []),
   ];
   const border = '+' + '-'.repeat(WIDTH) + '+';
   const lines = ['TETRIS', border + '  ' + sidebar[0]];
