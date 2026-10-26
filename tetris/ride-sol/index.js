@@ -68,6 +68,16 @@ function rotatePiece(piece) {
   return false;
 }
 
+function fallInterval() {
+  return Math.max(100, Math.round(700 * 0.85 ** Math.floor(linesCleared / 10)));
+}
+
+function hardDrop() {
+  if (!activePiece) return;
+  while (canPlace(activePiece, activePiece.x, activePiece.y + 1)) activePiece.y++;
+  tick(); // Lock immediately, clear lines, and spawn the next piece.
+}
+
 function tick() {
   if (!activePiece) return;
   if (canPlace(activePiece, activePiece.x, activePiece.y + 1)) {
@@ -117,13 +127,18 @@ function render() {
 render();
 
 if (process.stdin.isTTY) {
-  const gravity = setInterval(tick, 700);
+  let gravity;
+  function gravityTick() {
+    tick();
+    gravity = setTimeout(gravityTick, fallInterval());
+  }
+  gravity = setTimeout(gravityTick, fallInterval());
   readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
 
   function cleanup() {
-    clearInterval(gravity);
+    clearTimeout(gravity);
     process.stdin.setRawMode(false);
     process.stdin.pause();
   }
@@ -137,6 +152,10 @@ if (process.stdin.isTTY) {
     if (!activePiece) return;
     if (key.name === 'up') {
       if (rotatePiece(activePiece)) render();
+      return;
+    }
+    if (key.name === 'space') {
+      hardDrop();
       return;
     }
     const dx = key.name === 'left' ? -1 : key.name === 'right' ? 1 : 0;
