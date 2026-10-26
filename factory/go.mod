@@ -3,13 +3,14 @@ module github.com/lean-software-production/my-factory-reference/factory
 go 1.27
 
 require (
+	github.com/awalterschulze/gographviz v2.0.3+incompatible
 	github.com/creack/pty v1.1.24
 	github.com/cucumber/godog v0.16.0
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
+	golang.org/x/term v0.47.0
 )
 
 require (
-	github.com/awalterschulze/gographviz v2.0.3+incompatible // indirect
 	github.com/cucumber/gherkin/go/v42 v42.0.0 // indirect
 	github.com/cucumber/messages/go/v34 v34.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -18,5 +19,4 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/term v0.47.0 // indirect
 )
