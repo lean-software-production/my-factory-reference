@@ -3,7 +3,7 @@
 - [x] Add the seven tetromino shapes and spawn pieces on the board
 - [x] Implement left, right, and down movement with collision checks
 - [x] Implement piece rotation while keeping pieces within valid board positions
-- [ ] Add automatic piece falling and lock pieces when they land
+- [x] Add automatic piece falling and lock pieces when they land
 - [ ] Clear completed lines and display the current score
 - [ ] Add hard drop and increase the fall speed as the game progresses
 - [ ] Detect game over and allow starting a new game
