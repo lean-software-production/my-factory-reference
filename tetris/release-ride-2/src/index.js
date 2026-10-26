@@ -1,5 +1,6 @@
 const readline = require('node:readline');
 const { BOARD_WIDTH, BOARD_HEIGHT, render } = require('./render');
+const { randomPiece } = require('./pieces');
 
 function start() {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -32,7 +33,8 @@ function start() {
   input.on('keypress', onKey);
   process.on('SIGINT', close);
   const board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(null));
-  output.write(`\x1b[?25l\x1b[2J\x1b[H${render(board, 0)}`);
+  const piece = randomPiece(BOARD_WIDTH);
+  output.write(`\x1b[?25l\x1b[2J\x1b[H${render(board, 0, piece)}`);
 }
 
 start();
