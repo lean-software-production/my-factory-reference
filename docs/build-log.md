@@ -1724,3 +1724,30 @@ covers the defaults, a login, no login with a key in the environment, and
 `MODEL`. The wording in `bin/release` (a comment and the release notes it
 prints) no longer says "ride" either. Earlier sections of this log, and the
 ride targets already made, keep the old names.
+
+## Release 2026.10.26.2
+
+Cut on 2026-10-26 from `main` at ac3b645 with `bin/release 2026.10.26.2`. `sha256sum -c`
+is OK for all three binaries, and `factory-2026.10.26.2-linux-amd64 --version` prints
+`factory 2026.10.26.2`. The first use of that binary built Tetris from `tetris/spec.md`
+with `bin/use-reference-factory`, in `/home/ensembleworks-agent/builds/2026.10.26.2`
+(outside this repository), on `openai-codex/gpt-6.1-sol` for both machines.
+
+- **Time:** 14m 59s for the run that finished, which was a resume. The first
+  attempt failed after 2m 35s (round 2: "the ralph (pi-rpc-acp) ended its turn
+  having generated nothing"), so the whole took about 17m 34s of factory time.
+  Starting the script again with the same target and run name began the run
+  again from round 1 rather than from round 2, and its counters began at 0.
+- **Tokens:** 252.5k for the finished run (planner 92.9k, ralph 159.6k, 12
+  rounds), plus 14.2k spent in the failed attempt: about 266.7k in all.
+- **Playable:** yes. `python3 -I .../ride-check/play.py` drew the board and the
+  pieces, entered and restored the alternate screen, and quit on `q` with
+  status 0. `npm test` in the build passes 46 of 46.
+- **Status bar** in `watch`: `start ▸ planner ▸ ralph ↺ planner` with a round.
+
+The release is not published. This is the command to publish it, run from the
+repository root by David:
+
+```
+gh release create 2026.10.26.2 -R lean-software-production/my-factory-starter --target main --title 2026.10.26.2 --notes "Built from my-factory-reference@ac3b645. linux-arm64 and darwin-arm64 are untested: neither can be run where they are built. On an arm64 Linux box or a Mac, please try factory --version and a run of the implement-with-ralph-loop line." dist/2026.10.26.2/*
+```
