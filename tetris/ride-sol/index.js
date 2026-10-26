@@ -22,12 +22,37 @@ function spawnPiece() {
   return { type, x: Math.floor((WIDTH - 4) / 2), y: 0, cells: SHAPES[type] };
 }
 
-const activePiece = spawnPiece();
+const settled = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(' '));
+let activePiece = spawnPiece();
+
+function canPlace(piece, x, y) {
+  return piece.cells.every(([dx, dy]) => {
+    const col = x + dx;
+    const row = y + dy;
+    return col >= 0 && col < WIDTH && row >= 0 && row < HEIGHT && settled[row][col] === ' ';
+  });
+}
+
+function tick() {
+  if (!activePiece) return;
+  if (canPlace(activePiece, activePiece.x, activePiece.y + 1)) {
+    activePiece.y++;
+  } else {
+    for (const [dx, dy] of activePiece.cells) {
+      settled[activePiece.y + dy][activePiece.x + dx] = activePiece.type;
+    }
+    const next = spawnPiece();
+    activePiece = canPlace(next, next.x, next.y) ? next : null;
+  }
+  render();
+}
 
 function render() {
-  const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(' '));
-  for (const [dx, dy] of activePiece.cells) {
-    board[activePiece.y + dy][activePiece.x + dx] = activePiece.type;
+  const board = settled.map((row) => row.slice());
+  if (activePiece) {
+    for (const [dx, dy] of activePiece.cells) {
+      board[activePiece.y + dy][activePiece.x + dx] = activePiece.type;
+    }
   }
   const sidebar = [
     'Score: 0',
@@ -56,6 +81,7 @@ function render() {
 render();
 
 if (process.stdin.isTTY) {
+  const gravity = setInterval(tick, 700);
   process.stdin.setRawMode(true);
   process.stdin.resume();
   process.stdin.on('data', (key) => {
@@ -63,5 +89,8 @@ if (process.stdin.isTTY) {
       process.exit();
     }
   });
-  process.on('exit', () => process.stdin.setRawMode(false));
+  process.on('exit', () => {
+    clearInterval(gravity);
+    process.stdin.setRawMode(false);
+  });
 }
