@@ -73,7 +73,7 @@ function rotatePiece(board, piece) {
   return false;
 }
 
-function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null, score = 0) {
+function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null, score = 0, gameOver = false) {
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
   const cells = board.map((row) => row.slice());
   if (piece) {
@@ -84,14 +84,15 @@ function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_W
     }));
   }
   const rows = cells.map((row) => `|${row.map((cell) => cell ? '[]' : '  ').join('')}|`);
-  process.stdout.write(`${clear}TETRIS  Score: ${score}\n${border}\n${rows.join('\n')}\n${border}\n`);
+  process.stdout.write(`${clear}TETRIS  Score: ${score}\n${border}\n${rows.join('\n')}\n${border}\n${gameOver ? 'GAME OVER - Press r to restart or q to quit' : ''}\n`);
 }
 
 function start() {
-  const board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false));
+  let board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false));
   let piece = spawnPiece();
   let score = 0;
-  render(board, piece, score);
+  let gameOver = !canPlace(board, piece);
+  render(board, piece, score, gameOver);
   if (!process.stdin.isTTY) {
     process.stdout.write('(Run in a terminal to play.)\n');
     return;
@@ -106,13 +107,18 @@ function start() {
     const lines = clearCompletedLines(board);
     score += [0, 100, 300, 500, 800][lines] || lines * 200;
     piece = spawnPiece();
+    if (!canPlace(board, piece)) {
+      gameOver = true;
+      clearInterval(fallTimer);
+    }
   };
   const fallDelay = () => Math.max(100, 800 - Math.floor(score / 500) * 80);
   const fall = () => {
+    if (gameOver) return;
     if (!movePiece(board, piece, 0, 1)) lockPiece();
-    render(board, piece, score);
+    render(board, piece, score, gameOver);
     clearInterval(fallTimer);
-    fallTimer = setInterval(fall, fallDelay());
+    if (!gameOver) fallTimer = setInterval(fall, fallDelay());
   };
   let fallTimer = setInterval(fall, fallDelay());
   process.stdin.setEncoding('utf8');
@@ -126,6 +132,17 @@ function start() {
     if (key === 'q' || key === '\u0003') {
       cleanup();
       process.exit(0);
+    }
+    if (gameOver) {
+      if (key === 'r') {
+        board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false));
+        score = 0;
+        piece = spawnPiece();
+        gameOver = !canPlace(board, piece);
+        if (!gameOver) fallTimer = setInterval(fall, fallDelay());
+        render(board, piece, score, gameOver);
+      }
+      return;
     }
     if (key === ' ') {
       while (movePiece(board, piece, 0, 1)) { /* drop to the landing position */ }
