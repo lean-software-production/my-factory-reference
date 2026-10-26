@@ -1,4 +1,4 @@
-// Terminal rendering and piece spawning; movement is added in later steps.
+// Terminal rendering, piece spawning, and gravity.
 const { stdin, stdout } = process;
 const WIDTH = 10;
 const HEIGHT = 20;
@@ -24,12 +24,37 @@ function spawnPiece() {
 let active = spawnPiece();
 let score = 0;
 
+function canPlace(piece, x, y) {
+  return piece.shape.cells.every((row, dy) => row.every((filled, dx) => {
+    if (!filled) return true;
+    const boardX = x + dx;
+    const boardY = y + dy;
+    return boardX >= 0 && boardX < WIDTH && boardY >= 0 && boardY < HEIGHT &&
+      !board[boardY][boardX];
+  }));
+}
+
+function lockPiece() {
+  active.shape.cells.forEach((row, dy) => row.forEach((filled, dx) => {
+    if (filled) board[active.y + dy][active.x + dx] = active.shape.name;
+  }));
+  // Spawning the next piece is added in a later step.
+  active = null;
+}
+
+function tick() {
+  if (!active) return;
+  if (canPlace(active, active.x, active.y + 1)) active.y++;
+  else lockPiece();
+  render();
+}
+
 function render() {
   const border = '+' + '-'.repeat(WIDTH * 2) + '+';
   const rows = board.map((row, y) => '|' + row.map((cell, x) => {
-    const pieceX = x - active.x;
-    const pieceY = y - active.y;
-    const occupied = pieceY >= 0 && pieceY < active.shape.cells.length &&
+    const pieceX = active ? x - active.x : -1;
+    const pieceY = active ? y - active.y : -1;
+    const occupied = active && pieceY >= 0 && pieceY < active.shape.cells.length &&
       pieceX >= 0 && pieceX < active.shape.cells[pieceY].length &&
       active.shape.cells[pieceY][pieceX];
     return cell || occupied ? '[]' : '  ';
@@ -46,9 +71,11 @@ if (!stdin.isTTY || !stdout.isTTY) {
   stdout.write('TETRIS\nRun npm start in a terminal to play.\n');
 } else {
   let closing = false;
+  let gravity;
   const close = () => {
     if (closing) return;
     closing = true;
+    clearInterval(gravity);
     stdin.setRawMode(false);
     stdin.pause();
     stdout.write('\n');
@@ -65,4 +92,5 @@ if (!stdin.isTTY || !stdout.isTTY) {
 
   stdout.write('\x1b[2J');
   render();
+  gravity = setInterval(tick, 600);
 }
