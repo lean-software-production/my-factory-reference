@@ -40,6 +40,17 @@ function rotate(game) {
   return true;
 }
 
+function clearLines(game) {
+  const remaining = game.board.filter(row => row.some(cell => !cell));
+  const cleared = HEIGHT - remaining.length;
+  game.board = [
+    ...Array.from({ length: cleared }, () => Array(WIDTH).fill(0)),
+    ...remaining,
+  ];
+  game.score += cleared * 100;
+  return cleared;
+}
+
 function tick(game, random = Math.random) {
   if (game.gameOver) return;
   const next = { ...game.piece, y: game.piece.y + 1 };
@@ -51,6 +62,7 @@ function tick(game, random = Math.random) {
   for (const [dx, dy] of game.piece.cells) {
     game.board[game.piece.y + dy][game.piece.x + dx] = game.piece.type;
   }
+  clearLines(game);
   game.piece = spawnPiece(random);
   // Wait for the game-over UI before displaying a piece that cannot spawn.
   if (!canPlace(game.board, game.piece)) {
@@ -59,4 +71,4 @@ function tick(game, random = Math.random) {
   }
 }
 
-module.exports = { createGame, canPlace, move, rotate, tick };
+module.exports = { createGame, canPlace, move, rotate, clearLines, tick };
