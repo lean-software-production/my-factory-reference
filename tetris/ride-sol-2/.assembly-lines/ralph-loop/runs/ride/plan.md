@@ -1,0 +1,10 @@
+- [ ] Set up an npm project whose `npm start` opens a terminal display and exits cleanly.
+- [ ] Draw an empty Tetris board with borders, score, and controls, all within 24 terminal rows.
+- [ ] Define the seven tetromino shapes and display a falling piece on the board.
+- [ ] Add timed gravity, collision detection, and locking pieces into the board.
+- [ ] Add keyboard controls to move left/right, rotate, and drop pieces.
+- [ ] Clear completed lines and update the score shown in the display.
+- [ ] Spawn successive pieces and show game over when a new piece cannot fit.
+- [ ] Add restart and quit controls, including terminal cleanup on exit.
+- [ ] Keep the live display stable within 24 rows across play, scoring, and game over.
+- [ ] Add automated checks for core game rules and document how to play.
