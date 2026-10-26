@@ -13,7 +13,7 @@ function start() {
   const output = process.stdout;
   let closed = false;
   let timer;
-  const game = createGame();
+  let game = createGame();
 
   function draw() {
     output.write(`\x1b[H${render(game.board, game.score, game.gameOver ? null : game.piece, game.gameOver, game.nextPiece)}`);
@@ -30,10 +30,25 @@ function start() {
     output.write('\x1b[?25h\x1b[0m\n');
   }
 
+  function startGravity() {
+    clearInterval(timer);
+    timer = setInterval(() => {
+      tick(game);
+      draw();
+      if (game.gameOver) clearInterval(timer);
+    }, 700);
+  }
+
   function onKey(_text, key) {
     if (!key) return;
     if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
       close();
+      return;
+    }
+    if (key.name === 'r') {
+      game = createGame();
+      draw();
+      startGravity();
       return;
     }
     if (game.gameOver) return;
@@ -54,11 +69,7 @@ function start() {
   process.on('SIGINT', close);
   output.write('\x1b[?25l\x1b[2J');
   draw();
-  timer = setInterval(() => {
-    tick(game);
-    draw();
-    if (game.gameOver) clearInterval(timer);
-  }, 700);
+  startGravity();
 }
 
 start();

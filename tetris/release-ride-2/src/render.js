@@ -10,8 +10,8 @@ function render(board, score, piece = null, gameOver = false, nextPiece = null) 
     5: 'Down or S  Soft drop',
     6: 'Up or W  Rotate',
     7: 'Space  Hard drop',
-    8: 'Q  Quit',
-    9: gameOver ? 'Game over' : '',
+    8: 'R  Restart   Q  Quit',
+    9: gameOver ? 'Game over! Press R to restart' : '',
     11: 'Next:',
   };
   if (nextPiece) {
