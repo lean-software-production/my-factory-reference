@@ -4,7 +4,7 @@
 - [x] Add timed gravity, collision detection, and locking pieces into the settled board.
 - [x] Add keyboard controls for moving left/right, soft dropping, and quitting cleanly.
 - [x] Add piece rotation with collision checks and simple wall kicks.
-- [ ] Clear completed lines and update the displayed line count and score.
+- [x] Clear completed lines and update the displayed line count and score.
 - [ ] Add hard drop and increasing fall speed as the player clears lines.
 - [ ] Detect game over on blocked spawn and support restarting a new game from the game-over screen.
 - [ ] Add automated checks for core game rules and verify terminal cleanup and the full display, including game-over text, stays within 24 rows.
