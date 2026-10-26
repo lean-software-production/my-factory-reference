@@ -71,4 +71,11 @@ function tick(game, random = Math.random) {
   }
 }
 
-module.exports = { createGame, canPlace, move, rotate, clearLines, tick };
+function hardDrop(game, random = Math.random) {
+  if (game.gameOver || !game.piece) return false;
+  while (move(game, 0, 1)) {}
+  tick(game, random);
+  return true;
+}
+
+module.exports = { createGame, canPlace, move, rotate, clearLines, tick, hardDrop };

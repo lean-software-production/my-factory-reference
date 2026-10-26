@@ -1,6 +1,6 @@
 const readline = require('node:readline');
 const { render } = require('./render');
-const { createGame, move, rotate, tick } = require('./game');
+const { createGame, move, rotate, tick, hardDrop } = require('./game');
 
 const game = createGame();
 function draw() {
@@ -27,6 +27,7 @@ if (process.stdin.isTTY && process.stdout.isTTY) {
       case 'right': changed = move(game, 1, 0); break;
       case 'up': changed = rotate(game); break;
       case 'down': tick(game); changed = true; break;
+      case 'space': changed = hardDrop(game); break;
     }
     if (changed) draw();
   });
