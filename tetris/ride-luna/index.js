@@ -84,7 +84,10 @@ function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_W
     }));
   }
   const rows = cells.map((row) => `|${row.map((cell) => cell ? '[]' : '  ').join('')}|`);
-  process.stdout.write(`${clear}TETRIS  Score: ${score}\n${border}\n${rows.join('\n')}\n${border}\n${gameOver ? 'GAME OVER - Press r to restart or q to quit' : ''}\n`);
+  const footer = gameOver
+    ? 'GAME OVER - Press r to restart or q to quit'
+    : '←/→ or A/D: move  ↓/S: drop  ↑/W: rotate  Space: hard drop  Q: quit';
+  process.stdout.write(`${clear}TETRIS  Score: ${score}\n${border}\n${rows.join('\n')}\n${border}\n${footer}\n`);
 }
 
 function start() {
