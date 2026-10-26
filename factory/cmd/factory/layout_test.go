@@ -74,7 +74,7 @@ func checkLayout(t *testing.T, l *assemblyLine, wantRanks map[string]int, wantBa
 // Read in the order it is written, the demo line sends work to doer before
 // it plans; the replay has to show it planning first.
 func TestLayoutOfTheDemoLineReadsPlanningFirst(t *testing.T) {
-	l := lineFrom(t, "../../../demo/efficient/.assembly-lines/efficient/assembly-line.dot")
+	l := lineFrom(t, "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/assembly-line.dot")
 	placed := checkLayout(t, l, map[string]int{
 		"start": 0, "plan_gate": 1, "plan_author": 2,
 		"plan_reviewer_opus": 3, "plan_reviewer_gemini": 3, "plan_reviewer_astra": 3,
@@ -142,7 +142,7 @@ func TestLayoutPutsAnUnreachableMachineAfterTheOthersInItsRank(t *testing.T) {
 
 // Where the route doubles back is what the replay draws as the line's loops.
 func TestBackEdgesOfTheDemoLine(t *testing.T) {
-	l := lineFrom(t, "../../../demo/efficient/.assembly-lines/efficient/assembly-line.dot")
+	l := lineFrom(t, "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/assembly-line.dot")
 	want := []string{"plan_synthesiser->plan_author", "planner->doer", "validator->doer", "validator->plan_author"}
 	if got := backEdgesOf(l); !slices.Equal(got, want) {
 		t.Errorf("back edges are %q, not %q", got, want)

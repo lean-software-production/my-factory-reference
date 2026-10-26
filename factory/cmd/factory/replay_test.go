@@ -15,8 +15,8 @@ import (
 	"github.com/lean-software-production/my-factory-reference/factory/internal/watch"
 )
 
-const demoRecord = "../../../demo/efficient/.assembly-lines/efficient/runs/tetris-007/record.jsonl"
-const demoGraph = "../../../demo/efficient/.assembly-lines/efficient/assembly-line.dot"
+const demoRecord = "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/runs/tetris-007/record.jsonl"
+const demoGraph = "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/assembly-line.dot"
 
 const rideRecord = "../../../tetris/release-ride/.assembly-lines/ralph-loop/runs/ride/record.jsonl"
 const rideGraph = "../../../tetris/release-ride/.assembly-lines/ralph-loop/assembly-line.dot"
@@ -298,7 +298,13 @@ func countsOf(d replayDoc, f replayFrame) map[string]int {
 // edges named have their counts, and, when every is set, all others none.
 func checkCounts(t *testing.T, d replayDoc, f replayFrame, want map[string]int, every bool) {
 	t.Helper()
-	for edge, got := range countsOf(d, f) {
+	counts := countsOf(d, f)
+	for edge, n := range want {
+		if _, ok := counts[edge]; !ok {
+			t.Errorf("%s is no edge of the line, so its count of %d can't be checked", edge, n)
+		}
+	}
+	for edge, got := range counts {
 		if n, named := want[edge]; (named || every) && got != n {
 			t.Errorf("%s is counted %d, not %d", edge, got, n)
 		}
@@ -421,6 +427,49 @@ func TestAFailedTurnCreditsNoEdge(t *testing.T) {
 	}, false)
 	if doerTurns != plannerStarts-2 {
 		t.Errorf("the doer ended %d turns well, and the planner started %d times", doerTurns, plannerStarts)
+	}
+}
+
+func TestAFailedTurnWhileTheRunGoesOnCreditsNoEdge(t *testing.T) {
+	// The ralph loop's ralph fails its turn, and the planner starts again, the
+	// run going on. The failed turn handed off nothing.
+	graph := "../../../lines/implement-with-ralph-loop/assembly-line.dot"
+	d := replayOf(t, "testdata/replay/failed-turn.jsonl", graph)
+	checkCounts(t, d, lastFrame(t, d), map[string]int{
+		"start->planner":  1,
+		"planner->ralph":  1,
+		"ralph->planner":  0,
+		"planner->finish": 1,
+	}, true)
+	var second *handoff
+	planner := 0
+	for i, h := range d.Handoffs {
+		if h.Machine == "planner" {
+			if planner++; planner == 2 {
+				second = &d.Handoffs[i]
+			}
+		}
+	}
+	if second == nil {
+		t.Fatalf("the planner doesn't start twice: hand-offs %+v", d.Handoffs)
+	}
+	if second.SendBack {
+		t.Error("the planner's second start is a send-back")
+	}
+	var before, at replayFrame
+	for _, f := range d.Frames {
+		if f.At < second.At {
+			before = f
+		}
+		if f.At <= second.At {
+			at = f
+		}
+	}
+	if !slices.Contains(at.Working, "planner") || slices.Contains(before.Working, "planner") {
+		t.Fatalf("the frame at the planner's second start has working %v, and the frame before has %v", at.Working, before.Working)
+	}
+	if !slices.Equal(at.Counts, before.Counts) {
+		t.Errorf("the planner's second start credited an edge: counts were %v, and are %v", before.Counts, at.Counts)
 	}
 }
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.27 (`net/http`, `embed`, `encoding/json`), plain ES2020 JavaScript and SVG, no build step. Playwright 1.64.1 with Chromium for the browser check only.
 
-**Spec:** `docs/superpowers/specs/2026-10-26-visualise-run-design.md`. Mockups beside it: `2026-10-26-visualise-run-mockup-efficient.html` (the demo line: layout, models, result lines, the timeline's break) and `2026-10-26-visualise-run-mockup.html` (bubble placement and tails; ignore its flashing).
+**Spec:** `docs/superpowers/specs/2026-10-26-visualise-run-design.md`. Mockups beside it: `2026-10-26-visualise-run-mockup-3-big-brains.html` (the demo line: layout, models, result lines, the timeline's break) and `2026-10-26-visualise-run-mockup.html` (bubble placement and tails; ignore its flashing).
 
 ## Global Constraints
 
@@ -58,7 +58,7 @@
 
 ```go
 func TestLayoutOfTheDemoLineReadsPlanningFirst(t *testing.T) {
-	l := lineFrom(t, "../../../demo/efficient/.assembly-lines/efficient/assembly-line.dot")
+	l := lineFrom(t, "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/assembly-line.dot")
 	ranks := ranksOf(l.layout()) // map[string]int
 	want := map[string]int{"start": 0, "plan_gate": 1, "plan_author": 2,
 		"plan_reviewer_opus": 3, "plan_reviewer_gemini": 3, "plan_reviewer_astra": 3,
@@ -100,7 +100,7 @@ func TestLayoutPlacesAMachineStartNeverReaches(t *testing.T) {
 Run: `cd factory && go test ./cmd/factory -run 'TestLayout|TestBackEdges' -count=1`
 Expected: FAIL (`l.layout undefined`).
 
-- [ ] **Step 3: Add the demo material** David provided, from BB thread storage `thr_ahpnztqd9i/demo-line/`: `assembly-line.dot` to `demo/efficient/.assembly-lines/efficient/assembly-line.dot` and `record.jsonl` to `demo/efficient/.assembly-lines/efficient/runs/tetris-007/record.jsonl`, unchanged. Add `demo/README.md`: two sentences saying this is a real run of the reference factory, kept for `factory visualise-run demo/efficient/.assembly-lines/efficient/runs/tetris-007/record.jsonl`, and that it isn't a target to build in.
+- [ ] **Step 3: Add the demo material** David provided, from BB thread storage `thr_ahpnztqd9i/demo-line/`: `assembly-line.dot` to `demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/assembly-line.dot` and `record.jsonl` to `demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/runs/tetris-007/record.jsonl`, unchanged. Add `demo/README.md`: two sentences saying this is a real run of the reference factory, kept for `factory visualise-run demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/runs/tetris-007/record.jsonl`, and that it isn't a target to build in.
 
 - [ ] **Step 4: Implement `layout` and `backEdges` in `layout.go`** as above.
 
@@ -193,7 +193,7 @@ type replayEdge struct {
 	To       string `json:"to"`
 	Label    string `json:"label"`
 	Back     bool   `json:"back"`
-	SendBack bool   `json:"sendBack"` // back, and to a machine other than the planner
+	SendBack bool   `json:"sendBack"` // back, and neither end is the planner
 }
 type replayFrame struct {
 	At       float64           `json:"at"`
@@ -248,8 +248,8 @@ func shownModel(model string) string
 - [ ] **Step 1: Write the failing tests** (`replayOf(t, recordPath, graphPath)` reads both and calls `buildReplay`; `frameAt(doc, seconds)` is the last frame with `At <= seconds`):
 
 ```go
-const demoRecord = "../../../demo/efficient/.assembly-lines/efficient/runs/tetris-007/record.jsonl"
-const demoGraph = "../../../demo/efficient/.assembly-lines/efficient/assembly-line.dot"
+const demoRecord = "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/runs/tetris-007/record.jsonl"
+const demoGraph = "../../../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/assembly-line.dot"
 
 func TestDemoRunTimeCutsOutTheGap(t *testing.T) {
 	d := replayOf(t, demoRecord, demoGraph)
@@ -298,7 +298,7 @@ func TestShownModel(t *testing.T) {
 func TestNodesAndEdgesOfTheDemoLine(t *testing.T) {
 	// node "plan_reviewer_opus" has Label "plan reviewer opus", Kind "machine", Rank 3, Row -1;
 	// start Kind "start", finish Kind "finish"; edge validator->doer has Label "retry",
-	// Back true, SendBack true; planner->doer Back true, SendBack true;
+	// Back true, SendBack true; planner->doer Back true, SendBack false (the planner is one end);
 	// a ralph loop's ralph->planner is Back true, SendBack false
 }
 ```
@@ -477,7 +477,7 @@ func TestReadRecordIgnoresAPartialLastLine(t *testing.T) {
 }
 
 func TestNamesComeFromThePathWithoutRunJSON(t *testing.T) {
-	// demo record: Run "tetris-007", Line "efficient", Target ending "demo/efficient";
+	// demo record: Run "tetris-007", Line "implement-with-3-big-brains", Target ending "demo/implement-with-3-big-brains";
 	// release-ride-3 (whose run.json says "ralph-loop"): Line "ralph-loop"
 }
 
@@ -514,8 +514,8 @@ Expected: FAIL.
 
 Run: `cd factory && go test ./... -count=1 && go vet ./... && gofmt -l .`
 Expected: PASS, no output from `gofmt`.
-Run: `go run ./cmd/factory visualise-run ../demo/efficient/.assembly-lines/efficient/runs/tetris-007/record.jsonl --port 8765` in one terminal, `curl -sI http://localhost:8765/` and `curl -s http://localhost:8765/run.json | head -c 300` in another.
-Expected: the four printed lines; a 200 with no framing headers; JSON starting `{"run":"tetris-007","line":"efficient"`.
+Run: `go run ./cmd/factory visualise-run ../demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains/runs/tetris-007/record.jsonl --port 8765` in one terminal, `curl -sI http://localhost:8765/` and `curl -s http://localhost:8765/run.json | head -c 300` in another.
+Expected: the four printed lines; a 200 with no framing headers; JSON starting `{"run":"tetris-007","line":"implement-with-3-big-brains"`.
 
 - [ ] **Step 6: Commit** — `git commit -m "Add a hidden visualise-run command that serves a run's replay"`
 
@@ -531,7 +531,7 @@ Expected: the four printed lines; a 200 with no framing headers; JSON starting `
 - Consumes: `GET run.json` (relative), the document from Task 3–4; the kit's `sketchbook.css`, `sketchbook.js` (`#sk-wobble-line`, `#sk-head`, `.sk-bubble`, `.sk-title`, `.sk-hl`).
 - Produces, in `replay.js`, for Task 7: `const state = { doc, t, playing, speed }`; `function show(t)` draws the frame at `t` (the last frame with `at <= t`, by binary search); `function fmtElapsed(seconds)` and `function fmtStamp(seconds)`.
 
-What it draws, matching the efficient mockup:
+What it draws, matching the 3-big-brains mockup:
 - The header: `<target> · <line> · run "<run>"` on the left, `round <n>` on the right.
 - One SVG. Columns by `rank`, rows by `row`, boxes sized to their label and model line. `start` and `finish` dashed pills.
 - Edges: between adjacent ranks, a straight line or a gentle S-curve between rows; a forward edge spanning more than one rank, an arc over the top, higher for longer spans; a back edge, an arc underneath, deeper for longer spans. Each label at its edge's middle, on a paper-coloured backing so lines don't run through it. Arrowheads with the kit's `#sk-head`, wobble with `#sk-wobble-line`.
@@ -543,7 +543,7 @@ What it draws, matching the efficient mockup:
 
 - [ ] **Step 1: Build the page.** Temporarily call `show(570)` after loading, so the demo shows the mockup's moment.
 
-- [ ] **Step 2: Check it by eye**, at 1440 and at 640 wide, with Task 5's server and a headless screenshot (Playwright, as in Task 8). Compare with `2026-10-26-visualise-run-mockup-efficient.html` at 570s: the same ranks and rows; the four back edges underneath in blue; `plan_gate`'s two skips over the top; `doer` yellow; `planner` green with ✓; counts `2` on `start → plan_gate` and `3` on `planner → doer` (blue); `retry`, `replan`, `not satisfied`, `pending` and `complete` dotted. Then the ralph loop (`tetris/release-ride-3`) and `send-backs.jsonl` with `--graph` on the demo line, which must also read cleanly. Save the screenshots in the task's report, not the repo.
+- [ ] **Step 2: Check it by eye**, at 1440 and at 640 wide, with Task 5's server and a headless screenshot (Playwright, as in Task 8). Compare with `2026-10-26-visualise-run-mockup-3-big-brains.html` at 570s: the same ranks and rows; the four back edges underneath in blue; `plan_gate`'s two skips over the top; `doer` yellow; `planner` green with ✓; counts `2` on `start → plan_gate` and `3` on `planner → doer` (blue); `retry`, `replan`, `not satisfied`, `pending` and `complete` dotted. Then the ralph loop (`tetris/release-ride-3`) and `send-backs.jsonl` with `--graph` on the demo line, which must also read cleanly. Save the screenshots in the task's report, not the repo.
 
 - [ ] **Step 3: Run the Go tests** (the embedded-files test still holds)
 

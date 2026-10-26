@@ -1,0 +1,12 @@
+{"time":"2026-10-26T09:00:00.000000000Z","kind":"run","run":"failed-turn","state":"started"}
+{"time":"2026-10-26T09:00:00.010000000Z","kind":"start","machine":"planner","prompt":"Plan."}
+{"time":"2026-10-26T09:00:04.000000000Z","kind":"text","machine":"planner","text":"{\"complete\":false}"}
+{"time":"2026-10-26T09:00:04.010000000Z","kind":"result","machine":"planner","text":"{\"complete\":false}","result":{"complete":false}}
+{"time":"2026-10-26T09:00:04.020000000Z","kind":"end","machine":"planner"}
+{"time":"2026-10-26T09:00:05.000000000Z","kind":"start","machine":"ralph","prompt":"Do the task."}
+{"time":"2026-10-26T09:00:12.000000000Z","kind":"end","machine":"ralph","error":"the model stopped answering"}
+{"time":"2026-10-26T09:00:14.000000000Z","kind":"start","machine":"planner","prompt":"Plan."}
+{"time":"2026-10-26T09:00:18.000000000Z","kind":"text","machine":"planner","text":"{\"complete\":true}"}
+{"time":"2026-10-26T09:00:18.010000000Z","kind":"result","machine":"planner","text":"{\"complete\":true}","result":{"complete":true}}
+{"time":"2026-10-26T09:00:18.020000000Z","kind":"end","machine":"planner"}
+{"time":"2026-10-26T09:00:18.030000000Z","kind":"run","run":"failed-turn","state":"finished"}

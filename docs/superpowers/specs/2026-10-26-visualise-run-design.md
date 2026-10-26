@@ -24,7 +24,7 @@ It reads the run's record and its line's graph, serves a page from the factory i
 ## What the page shows
 
 Two mockups show the approved look:
-- [The demo line](2026-10-26-visualise-run-mockup-efficient.html): David's `efficient` run at 9m 31s, with real log lines from its record. It shows the layout, the models, results as short lines, and the timeline's break.
+- [The demo line](2026-10-26-visualise-run-mockup-3-big-brains.html): David's `implement-with-3-big-brains` run at 9m 31s, with real log lines from its record. It shows the layout, the models, results as short lines, and the timeline's break.
 - [`three-big-brains`](2026-10-26-visualise-run-mockup.html): the bubble placement and tails. Its working machines flash, which has since been dropped (see "The machines").
 
 Both graphs are placed by hand.
@@ -90,7 +90,7 @@ At the foot of the page:
    - `planner` goes to `doer` (`not complete`) or `finish` (`complete`).
 
    It's the run the demo is built around, so it must read well. David has provided a finished run (copies in BB thread storage, `thr_ahpnztqd9i/demo-line/`: `assembly-line.dot` and `record.jsonl`). What's in it:
-   - the line is called `efficient`, on target `tetris/tetris-007`, run `tetris-007`, made in a Codespace (paths start `/workspaces/`);
+   - the line is called `implement-with-3-big-brains`, on target `tetris/tetris-007`, run `tetris-007`, made in a Codespace (paths start `/workspaces/`). The line was first called `efficient`, so the record's prompts name that folder;
    - one plan round: `plan_gate` (not ready), `plan_author`, the three reviewers at once, `plan_synthesiser` (satisfied), then 13 tasks, each `doer` then `validator` then `planner`, until the planner says `complete` and the run finishes;
    - a stop and a resume: the run was stopped during the planner at 17:25, and started again 19 minutes later, when `plan_gate` said `ready` and went straight to `planner`;
    - **two send-backs**: the validator sent tasks 11 and 12 back to the `doer` (`retry`), with findings such as "Unknown escape sequences can dispatch embedded bytes as game commands", and passed each on the next attempt. No `replan` or `not satisfied` happens;
@@ -99,7 +99,7 @@ At the foot of the page:
    - its machines use different models (`gpt-6.1-sol` at `low` and `high`, and `gpt-6-astra` for one reviewer), in each `usage` event;
    - some `text` arrives a few seconds into a turn (a reviewer's first sentence), but most arrives when the machine finishes.
 
-   Keep its graph and record in the reference repo as demo material, under `demo/efficient/`, laid out as a real target is (`.assembly-lines/efficient/assembly-line.dot` and `.assembly-lines/efficient/runs/tetris-007/record.jsonl`), so the command finds the graph without help. An earlier, partly finished copy of the same run (its first 201 lines) was superseded by this one.
+   Keep its graph and record in the reference repo as demo material, under `demo/implement-with-3-big-brains/`, laid out as a real target is (`.assembly-lines/implement-with-3-big-brains/assembly-line.dot` and `.assembly-lines/implement-with-3-big-brains/runs/tetris-007/record.jsonl`), so the command finds the graph without help. An earlier, partly finished copy of the same run (its first 201 lines) was superseded by this one.
 3. A `three-big-brains` run, if one exists by then. It's not required.
 
 Both must look good at a laptop's screen size, shared on a call.
@@ -134,12 +134,12 @@ Both must look good at a laptop's screen size, shared on a call.
 - The command's name is `visualise-run`, with British spelling, as in David's wording.
 - It takes the record's path. A `--graph <path>` flag overrides where the graph is found, for a record kept somewhere else.
 - It listens on a free port on `localhost` by default, with `--port` to choose one, prints the address, and doesn't try to open a browser. It keeps serving until Ctrl-C.
-- The demo material goes in `demo/efficient/` in the reference repo.
+- The demo material goes in `demo/implement-with-3-big-brains/` in the reference repo.
 - 10× is the starting speed.
 - Which edge the work took isn't in the record. It's worked out from the record: when a machine starts, the edge it came along is the one from the machine that most recently ended among those with an edge to it. For a machine after a fan out (the synthesiser), each branch's edge counts once.
 - `finish` lights up when the record's last event is the run finishing.
 - **Layout of the demo line.** The planning part reads first, then the building loop: `start`, `plan_gate`, `plan_author`, the three plan reviewers stacked, `plan_synthesiser`, `doer`, `validator`, `planner`, `finish`, left to right. The edges back are then `not satisfied` (to `plan_author`), `retry` (to `doer`), `replan` (to `plan_author`) and `not complete` (to `doer`). A layout that breaks cycles by following edges in the order they're written would put `doer` right after `plan_gate`, because `pending` is written first, so the builder can't rely on that alone.
-- **Blue.** Every edge that goes back is blue, as the kit's loop-back arrow is. On the timeline, only a **send-back** gets a blue tick: work going back along a back edge to a machine other than the planner. On the demo line those are `not satisfied`, `retry` and `replan`; on three-big-brains, `not satisfied`; ralph-loop has none, since `ralph → planner` is its normal loop. Other hand-offs get slate ticks. (`canSendWorkBack` in `line.go` isn't enough: `retry` and `replan` aren't `not …` labels.)
+- **Blue.** Every edge that goes back is blue, as the kit's loop-back arrow is. On the timeline, only a **send-back** gets a blue tick: work going back along a back edge where neither end is the planner. On the demo line those are `not satisfied`, `retry` and `replan`; on three-big-brains, `not satisfied`; ralph-loop has none, since `ralph → planner` is its normal loop. The planner's `not complete` loop isn't one either: the planner is at one end of it. Other hand-offs get slate ticks. (`canSendWorkBack` in `line.go` isn't enough: `retry` and `replan` aren't `not …` labels.)
 - **A record holding a stop and a resume** (like `tetris/release-ride`'s and David's demo run, with more than one `run started` event) replays as one run:
   - the idle gap between the stop and the restart is cut out of the timeline, and marked there with a small break;
   - the elapsed time and the total count only the time the run was going;
