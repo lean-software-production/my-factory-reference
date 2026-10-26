@@ -1768,3 +1768,146 @@ picks; the publishing itself is only exercised by a real release. Release
 2026.10.26.2 was first published without its files, by hand, which this
 script makes impossible. Publishing doesn't move students: the starter pins
 the version in `bin/get-reference-factory`.
+
+## Beyond the homeworks: replaying a run in the browser
+
+Not a homework either: no iteration was fetched, and `factory/ITERATION` and
+`factory/spec/` are as homework 8 left them. `factory visualise-run
+<record.jsonl>` reads a finished run's record and its line's graph, works out
+what the run looked like at every moment, serves a page that plays it back,
+and prints `Open http://localhost:<port>/`. It keeps serving until Ctrl-C.
+`watch` and the feature suite are untouched.
+
+- **It is hidden.** It is in the command table in `main.go` and nowhere a
+  student reads: not in `factory --help`, not in any usage text, not in the
+  package comment's list of commands, not in the starter's README. It ships
+  in the release and works for anyone who knows its name. The flags are
+  `--graph <file>` (the graph defaults to `assembly-line.dot`, two folders up
+  from the record's folder) and `--port <n>` (default: any free port).
+- **Why:** David demos the reference factory to students before they build
+  their own, and wants them to see agents being guided through a workflow
+  rather than going wild. A finished run replayed in a browser, fast, the same
+  every time, shows that better than a terminal. The demo run is his own: the
+  `implement-with-3-big-brains` line on `tetris/tetris-007`, a plan reviewed by
+  three models at once, then 13 tasks of `doer`, `validator`, `planner`, with
+  two send-backs and a stop and a restart in the middle. Its graph and record
+  are kept in `demo/implement-with-3-big-brains/`, laid out as a real target
+  is, so the command finds the graph without help.
+- **The logic is in Go; the page only draws.** `cmd/factory/replay.go`
+  builds one JSON document (`run.json`) from the record and the graph: the
+  nodes with their place (`layout.go`), the edges, a frame for every change in
+  what the line shows (who is working, who is done this round, the model each
+  machine used, the tokens, the edge counts), the hand-offs, the breaks and
+  what each machine said. `replay.js` finds the frame for the moment and sets
+  the boxes, edges and text from it. It never works out anything about the
+  run, and it sets everything it is given as text, never as HTML. The page,
+  the sketchbook kit and its three fonts are embedded in the binary
+  (`internal/replayweb`), so the release is still one static binary and a
+  student needs no Graphviz and no Node.
+- **Which edge was taken is worked out, not recorded.** The record says which
+  machines started and ended, not along which edge the work went. The replay
+  works it out with the line's own routing: when a machine ends its turn well,
+  its result is given to the same `nextEdge` the factory runs a line with (that
+  is `next`, split in two to give the edge as well as where it leads), or the
+  work goes along every edge out if the machine fans out. Those edges wait for
+  the machines they lead to; a machine starting takes the edges waiting for it,
+  and the first to start in a run takes the edge from `start`. A stop or a
+  failure drops the edges waiting, so the first machine after a restart came
+  from `start`. The replay depends on the record and the graph only, never on
+  the plan or on a machine's prompt.
+- **Two rulings that a reader of the code needs.**
+  - *A send-back* is an edge that goes back where neither end is the planner:
+    the work was not good enough and is done again. The demo has exactly two
+    (the validator's two retries to the doer). The planner's own loop, `not
+    complete` back to the doer, only goes round again, and so does ralph-loop's
+    `ralph ↺ planner`. Every back edge is blue in the drawing, but only a
+    send-back gets a blue tick on the timeline. (`canSendWorkBack` in `line.go`
+    was not enough: `retry` and `replan` are not `not …` labels.)
+  - *The layout reads planning first.* The route is found by following the
+    edges from `start`, depth first, taking the last one written first.
+    The edges that lead back to a machine already on the route are the back
+    edges, and are kept out of the ranking. Written in order, the demo's first
+    edge out of `plan_gate` is `pending`, to the doer, which would put the doer
+    right after `plan_gate` and the planning off to the side. Reading them
+    in reverse puts `plan_author`, the reviewers and the synthesiser before the
+    doer, and the doer's loop after them: `start`, `plan_gate`, `plan_author`,
+    the three reviewers stacked, `plan_synthesiser`, `doer`, `validator`,
+    `planner`, `finish`.
+- **A record with a stop and a restart replays as one run.** The idle gap
+  between the stop and the restart is cut out of the time, which counts only
+  the time the run was going; the demo is 36m 41s of work, and 19 minutes of
+  waiting are left out. The gap is marked by a break on the timeline, and the
+  reason is shown under the drawing as the replay passes it. That line stays
+  up for at least 3 real seconds while playing, since at 60× its five run
+  seconds go by in a blink. A record that stops without the run finishing says
+  `The record ends at 19m 47s, before the run finished.`, and a run that
+  stopped or failed says so with its reason. A last line the run had not
+  finished writing is left out.
+- **The bar.** Play and pause; 1×, 10× and 60× (the page opens paused at 0,
+  with 10× selected, so there is time to talk first); a timeline you click or
+  drag, with a tick for every hand-off (blue for a send-back); and `next
+  hand-off`, which jumps to a second before the next machine starts, taking
+  hand-offs less than 0.25s apart as one stop. Times are shown as `watch`
+  shows them. Clicking a machine opens its log in a speech bubble: the lines it
+  generated by now, newest last and highlighted, and its result as one short
+  line. A machine that has not said anything yet shows `nothing yet`.
+- **Tool calls are not shown.** The record has no tool calls: the bridge sends
+  them and the factory drops them (`internal/machine/acp.go`). Most of what a
+  machine says arrives when its turn ends, so while it works its bubble mostly
+  shows earlier turns. Recording tool calls as a new kind of event would let
+  the bubble fill while a machine works, but it needs a new release and a new
+  demo run. It is a follow-up.
+- **It has to work in VS Code's Simple Browser, in a Codespace in the
+  browser.** That is where David demos. Simple Browser shows the page in a
+  frame, at a forwarded address (`https://<codespace>-<port>.app.github.dev`)
+  rather than `localhost`, often in a narrow pane. What that rules out:
+  - *Framing headers.* No response has `X-Frame-Options` or a
+    `Content-Security-Policy`, with or without `frame-ancestors` (not even
+    `'self'`: the frame is on another origin). No page has a `<meta
+    http-equiv>`, and no script breaks out of a frame or refuses to run in one.
+  - *Network.* Nothing is fetched from elsewhere: no CDN, no web fonts, no
+    scripts. Every address in the page is relative. There are no pop-ups, no
+    `alert` or `confirm`, and no storage the page needs.
+  - *`Host` and `Origin` checks.* The server answers any `Host` and checks no
+    `Origin`, since the name it is reached by is the Codespace's, not its own.
+    It listens on `127.0.0.1` only; the editor's port forwarding does the rest.
+  - *Keys.* VS Code takes many keys for itself, so every control works with a
+    click, and the space bar playing and pausing is only a bonus.
+  - *Width.* The drawing scales to the pane, the bar wraps rather than
+    overflows, and the bubble is kept inside the frame's own window.
+- **Tests.** `cmd/factory/replay_test.go`, `layout_test.go` and
+  `visualise_test.go` test the replay of the demo record and of two stand-in
+  records in `cmd/factory/testdata/replay/`, written by hand because the demo
+  has no real one: `send-backs.jsonl`, a run on the demo line with three
+  send-backs (a `not satisfied`, a `retry` and a `replan`; the demo has only
+  retries), and `failed-turn.jsonl`, a `ralph-loop` run in which one turn
+  failed (`the model stopped answering`). The handler tests read every response's headers
+  for the framing rules above, and the page's files for network addresses.
+- **The browser check.** `bin/check-visualise-run` builds the factory into a
+  temporary folder, installs `playwright@1.64.1` there with npm (the one
+  thing that needs the network, once per run), starts `visualise-run` on the
+  demo record and on three variations, serves `internal/replayweb/check/frame.html`
+  from another port (so that the page runs in a 640 × 720 frame on another
+  origin, as in Simple Browser), and runs `check/check.mjs` in
+  `/usr/bin/chromium` (or Playwright's own Chromium if there is none). It
+  stops every server it started when it ends, however it ends, and prints
+  `visualise-run browser check passed`. It checks, inside the frame: that
+  the page loads with no console errors and no request to any host but the two
+  local ones; 9 machines and the `start` and `finish` pills; paused at `0s of
+  36m 41s`; at 60× the time goes past 5m in 6 seconds; `next hand-off` moves
+  it on; the bubble lies inside the frame with its tail within 20px of the
+  machine's middle; at the end, `The run finished in 36m 41s, using 613.8k
+  tokens.`, `finish` lit and 2 blue ticks; the demo's first 201 lines end with
+  `The record ends at 19m 47s, before the run finished.`; `send-backs.jsonl`
+  has 3 blue ticks and finishes; and a machine that says `<b>bold</b>` shows
+  those characters, not bold text. It also checks that a machine that has not
+  started shows `nothing yet`. Run it from the repository root after any
+  change to the page or the command. It is not part of `go test`, which needs
+  neither a browser nor Node.
+- **What is still checked by hand.** David opens the demo run in Simple
+  Browser in a Codespace in the browser, half the screen wide, and plays it
+  to the end. A frame on another origin in headless Chromium is the nearest
+  the check gets; it cannot see the Codespace's forwarding.
+- **Not released.** Nothing here has been published; `bin/publish-release`
+  does that when David asks, and students are not moved to it until the
+  starter pins the new version.

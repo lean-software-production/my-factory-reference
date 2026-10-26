@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Checks the hidden `factory visualise-run` command in a real browser, in a
+# frame on another origin, as VS Code's Simple Browser shows it. For this
+# repository only; the unit tests cover the logic, this covers the page.
+#
+#   bin/check-visualise-run
+#
+# It builds the factory into a temporary folder, installs playwright 1.64.1
+# there with npm (it needs the network once per run, and nothing else does),
+# starts visualise-run on the demo run and on three variations of it, serves
+# factory/internal/replayweb/check/frame.html from another port, and drives
+# /usr/bin/chromium (or, without it, Playwright's own Chromium) through
+# check.mjs. Every server it starts is stopped on the way out, and so is the
+# temporary folder. It prints "visualise-run browser check passed" at the end.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+check="$repo/factory/internal/replayweb/check"
+demo="$repo/demo/implement-with-3-big-brains/.assembly-lines/implement-with-3-big-brains"
+backs="$repo/factory/cmd/factory/testdata/replay/send-backs.jsonl"
+
+die() { echo "bin/check-visualise-run: $*" >&2; exit 1; }
+for tool in go node npm python3 curl; do
+  command -v "$tool" >/dev/null || die "$tool is needed and was not found"
+done
+
+work="$(mktemp -d)"
+pids=()
+cleanup() {
+  local pid
+  for pid in ${pids[@]+"${pids[@]}"}; do kill "$pid" 2>/dev/null || true; done
+  for pid in ${pids[@]+"${pids[@]}"}; do wait "$pid" 2>/dev/null || true; done
+  rm -rf "$work"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+freeport() { python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
+
+# serve <port> <what> <command...> starts a server and waits until it answers.
+serve() {
+  local port="$1" what="$2"
+  shift 2
+  "$@" >"$work/$what.log" 2>&1 &
+  pids+=("$!")
+  local i
+  for i in $(seq 1 100); do
+    curl -s -o /dev/null "http://127.0.0.1:$port/" && return 0
+    kill -0 "$!" 2>/dev/null || { cat "$work/$what.log" >&2; die "the $what server stopped at once"; }
+    sleep 0.1
+  done
+  cat "$work/$what.log" >&2
+  die "the $what server did not answer"
+}
+
+echo "Building the factory..."
+(cd "$repo/factory" && CGO_ENABLED=0 go build -o "$work/factory" ./cmd/factory)
+
+echo "Installing playwright 1.64.1..."
+mkdir "$work/playwright"
+browser=()
+if [ -x /usr/bin/chromium ]; then
+  export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+  browser=(--chromium /usr/bin/chromium)
+fi
+(cd "$work/playwright" && npm init -y >/dev/null && npm install --no-audit --no-fund --silent playwright@1.64.1)
+if [ ${#browser[@]} -eq 0 ]; then
+  (cd "$work/playwright" && npx playwright install chromium)
+fi
+
+# Variations on the demo run, each in a folder shaped like a line's, so that
+# its graph is found beside it.
+variation() {
+  local name="$1"
+  mkdir -p "$work/$name/runs/$name"
+  cp "$demo/assembly-line.dot" "$work/$name/assembly-line.dot"
+  echo "$work/$name/runs/$name/record.jsonl"
+}
+head -n 201 "$demo/runs/tetris-007/record.jsonl" >"$(variation cut-short)"
+python3 -I - "$(variation markup)" <<'PY'
+import json, sys
+t = "2026-10-26T09:00:0%d.000000000Z"
+events = [
+    {"time": t % 0, "kind": "run", "run": "markup", "state": "started"},
+    {"time": t % 1, "kind": "start", "machine": "plan_gate", "prompt": "Check the plan."},
+    {"time": t % 2, "kind": "text", "machine": "plan_gate", "text": "<b>bold</b>"},
+    {"time": t % 3, "kind": "end", "machine": "plan_gate"},
+]
+with open(sys.argv[1], "w") as f:
+    for e in events:
+        f.write(json.dumps(e) + "\n")
+PY
+
+frame_port="$(freeport)"
+demo_port="$(freeport)"; cut_port="$(freeport)"; backs_port="$(freeport)"; markup_port="$(freeport)"
+serve "$demo_port" demo "$work/factory" visualise-run --port "$demo_port" "$demo/runs/tetris-007/record.jsonl"
+serve "$cut_port" cut-short "$work/factory" visualise-run --port "$cut_port" "$work/cut-short/runs/cut-short/record.jsonl"
+serve "$backs_port" send-backs "$work/factory" visualise-run --port "$backs_port" --graph "$demo/assembly-line.dot" "$backs"
+serve "$markup_port" markup "$work/factory" visualise-run --port "$markup_port" "$work/markup/runs/markup/record.jsonl"
+serve "$frame_port" frame python3 -I -m http.server "$frame_port" --bind 127.0.0.1 --directory "$check"
+
+echo "Driving the browser..."
+NODE_PLAYWRIGHT="$work/playwright" node "$check/check.mjs" \
+  "http://127.0.0.1:$frame_port/frame.html" "http://127.0.0.1:$demo_port/" \
+  --cut-short "http://127.0.0.1:$cut_port/" \
+  --send-backs "http://127.0.0.1:$backs_port/" \
+  --markup "http://127.0.0.1:$markup_port/" \
+  ${browser[@]+"${browser[@]}"}
+
+echo "visualise-run browser check passed"

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Replay, in a frame</title>
+<link rel="icon" href="data:,">
+<style>html, body { margin: 0; } iframe { display: block; width: 640px; height: 720px; border: 0; }</style>
+</head>
+<body>
+<!-- Stands in for VS Code's Simple Browser: the replay in a frame on another origin. The address comes in the query string. -->
+<iframe id="replay" src="about:blank"></iframe>
+<script>
+  document.getElementById('replay').src = new URLSearchParams(location.search).get('src') || 'about:blank';
+</script>
+</body>
+</html>
