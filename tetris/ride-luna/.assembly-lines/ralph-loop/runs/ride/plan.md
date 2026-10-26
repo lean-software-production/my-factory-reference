@@ -6,6 +6,6 @@
 - [x] Add automatic piece falling and lock pieces when they land
 - [x] Clear completed lines and display the current score
 - [x] Add hard drop and increase the fall speed as the game progresses
-- [ ] Detect game over and allow starting a new game
+- [x] Detect game over and allow starting a new game
 - [ ] Add controls and game-over messaging while keeping the complete display within 24 terminal rows
 - [ ] Verify core game rules, terminal cleanup, and display height with automated checks
