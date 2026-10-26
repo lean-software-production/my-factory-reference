@@ -7,54 +7,52 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/lean-software-production/my-factory-reference/factory/internal/machine"
+	"github.com/lean-software-production/my-factory-reference/factory/internal/watch"
 )
 
 // result is what a machine says it did: the last line of its answer that
 // is JSON.
 type result map[string]any
 
-// execute starts or resumes the run the invocation names. The line is read,
-// and refused if it cannot be run, and each machine is checked, before any
-// work is done or anything is written. When ctx is done, the machines
-// running are stopped, and so is the run.
-func (i invocation) execute(ctx context.Context) error {
+// prepare reads and checks what the run the invocation names needs, before
+// any machine is called: the line is read, and refused if it cannot be run,
+// and each machine is checked, before any work is done or anything is
+// written. Then the target is made a repository if it is in none, and a run
+// that has not been started is started: its folder is saved and committed.
+// Its machines run in the environment env, the caller's.
+func (i invocation) prepare(env []string) (*run, error) {
 	folder, err := i.openRun()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	line, err := loadAssemblyLine(folder.lineDir())
 	if err != nil {
-		return err
+		return nil, err
 	}
 	machines, err := loadMachines(line)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// A machine that cannot sign in is reported before any machine is called.
 	for _, name := range line.machinesOn() {
-		if err := machines[name].checkSignIn(); err != nil {
-			return err
+		if err := machines[name].CheckSignIn(env); err != nil {
+			return nil, err
 		}
 	}
 	if err := prepareTarget(folder.target); err != nil {
-		return err
+		return nil, err
 	}
 	if !folder.started {
 		if err := folder.save(); err != nil {
-			return err
+			return nil, err
 		}
 		if err := commitRunFolder(folder, "Start the "+folder.name+" run"); err != nil {
-			return err
+			return nil, err
 		}
 	}
-
-	r := &run{line, machines, i.attempts, folder}
-	err = r.along(ctx)
-	// However it ends, nothing the run made is left uncommitted.
-	if commitErr := commitRunFolder(folder, "Keep what the "+folder.name+" run made"); err == nil {
-		err = commitErr
-	}
-	return err
+	return &run{line: line, machines: machines, attempts: i.attempts, folder: folder, env: env}, nil
 }
 
 // A run is the factory going along the assembly line from start, calling
@@ -62,9 +60,11 @@ func (i invocation) execute(ctx context.Context) error {
 // line reaches finish.
 type run struct {
 	line     *assemblyLine
-	machines map[string]machine
+	machines map[string]machine.Machine
 	attempts int // the most times a task may send the line back to a machine
 	folder   runFolder
+	env      []string // the environment its machines run in
+	record   *record  // what its machines are given, generate and spend
 }
 
 // A task is finished when the line comes back to the planner with the work
@@ -125,7 +125,6 @@ func (r *run) along(ctx context.Context) error {
 			met = false
 		}
 		if next == finish {
-			fmt.Println("factory stopped")
 			return nil
 		}
 		if err := enter(next); err != nil {
@@ -144,7 +143,7 @@ func (r *run) along(ctx context.Context) error {
 			b.fields = r.fields(next)
 			prompt = b.String()
 		}
-		said, got, err := ask(ctx, r.machines[next], target, prompt)
+		said, got, err := r.ask(ctx, next, prompt)
 		if err != nil {
 			return err
 		}
@@ -200,7 +199,7 @@ func (r *run) fanOut(ctx context.Context, from string, branches []string, shared
 		b.fields = r.fields(branch)
 		prompt := b.String()
 		wg.Go(func() {
-			said, _, err := ask(ctx, r.machines[branch], r.folder.target, prompt)
+			said, _, err := r.ask(ctx, branch, prompt)
 			if err != nil {
 				stop(err)
 				return
@@ -228,26 +227,30 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// ask runs a machine and reads its result, which it reports, saying whose
-// it is: branches report as they finish.
-func ask(ctx context.Context, m machine, dir, prompt string) (string, result, error) {
-	answer, err := m.run(ctx, dir, prompt)
+// ask runs a machine and reads its result. Everything it is given,
+// generates and spends goes in the run's record as it happens.
+func (r *run) ask(ctx context.Context, name, prompt string) (string, result, error) {
+	m := r.machines[name]
+	r.record.add(watch.Event{Kind: watch.Start, Machine: name, Prompt: prompt})
+	turn, err := m.Run(ctx, r.folder.target, prompt, r.env, func(line string) {
+		r.record.add(watch.Event{Kind: watch.Text, Machine: name, Text: line})
+	})
+	if err == nil {
+		r.record.add(watch.Event{Kind: watch.Usage, Machine: name, Provider: m.Provider(), Model: m.Model,
+			InputTokens: turn.Usage.InputTokens, OutputTokens: turn.Usage.OutputTokens})
+	}
+	line, res := lastResult(turn.Text)
+	if err == nil && res == nil {
+		err = fmt.Errorf("could not read the %s's result: no line of its answer is a JSON object:\n%s", m.Name, turn.Text)
+	}
 	if err != nil {
+		r.record.add(watch.Event{Kind: watch.End, Machine: name, Error: err.Error()})
 		return "", nil, err
 	}
-	line, res := lastResult(answer)
-	if res == nil {
-		return "", nil, fmt.Errorf("could not read the %s's result: no line of its answer is a JSON object:\n%s", m.name, answer)
-	}
-	reporting.Lock()
-	fmt.Printf("%s: %s\n", m.name, line)
-	reporting.Unlock()
+	r.record.add(watch.Event{Kind: watch.Result, Machine: name, Text: line, Result: res})
+	r.record.add(watch.Event{Kind: watch.End, Machine: name})
 	return line, res, nil
 }
-
-// reporting is held while a result is reported, so that branches finishing
-// together report one at a time.
-var reporting sync.Mutex
 
 // lastResult finds the last line of the answer that is a JSON object.
 func lastResult(answer string) (string, result) {
@@ -260,4 +263,17 @@ func lastResult(answer string) (string, result) {
 		}
 	}
 	return "", nil
+}
+
+// loadMachines reads the folders of the machines on the line.
+func loadMachines(l *assemblyLine) (map[string]machine.Machine, error) {
+	machines := map[string]machine.Machine{}
+	for _, name := range l.machinesOn() {
+		m, err := machine.Load(name, l.machineDir(name))
+		if err != nil {
+			return nil, err
+		}
+		machines[name] = m
+	}
+	return machines, nil
 }

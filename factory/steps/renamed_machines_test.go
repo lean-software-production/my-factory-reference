@@ -15,7 +15,11 @@ import (
 func renamedWorld(t *testing.T) *world {
 	t.Helper()
 	w := newWorld()
-	t.Cleanup(w.tearDown)
+	t.Cleanup(func() {
+		if err := w.tearDown(); err != nil {
+			t.Error(err)
+		}
+	})
 	steps := []func() error{
 		w.setUp,
 		func() error { return w.useTarget("games/new-game") },

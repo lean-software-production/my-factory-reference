@@ -4,30 +4,26 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/lean-software-production/my-factory-reference/factory/internal/acptest"
 )
 
 // A student runs the factory by absolute path or through a symlink, from
 // the repository root. Relative --seed and --target must resolve from the
-// caller's working directory, not from where the binary lives, and nothing
-// is looked for beside the binary: the lines are in the target.
+// caller's working directory, not from where the binary lives, nor from
+// where the factory's daemon runs, and nothing is looked for beside the
+// binary: the lines are in the target.
 func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
-	binDir := t.TempDir()
-	binary := filepath.Join(binDir, "factory")
-	build := exec.Command("go", "build", "-o", binary, ".")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building the factory: %v\n%s", err, out)
-	}
+	binary := buildFactory(t)
+	binDir := filepath.Dir(binary)
 
 	cwd := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cwd, "s.md"), []byte("Build a game.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	agent := filepath.Join(binDir, "agent")
-	script := "#!/bin/sh\necho '{\"complete\": true}'\n"
-	if err := os.WriteFile(agent, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	agent := acptest.Harness(t, "agent", acptest.Script("", `{"complete": true}`))
 
 	// The assembly line is a folder in the target, which is in the caller's
 	// directory, not next to the binary: its graph, and a folder for each
@@ -53,12 +49,8 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 		}
 	}
 
-	run := exec.Command(binary, "--run", "r", "--line", "test", "--seed", "s.md", "--target", "t")
-	run.Dir = cwd
-	out, err := run.CombinedOutput()
-	if err != nil {
-		t.Fatalf("running the factory from %s: %v\n%s", cwd, err, out)
-	}
+	out := runFactory(t, binary, cwd, "--run", "r", "--line", "test", "--seed", "s.md", "--target", "t")
+	out += runFactory(t, binary, cwd, "watch", "r", "--target", "t")
 
 	if info, err := os.Stat(filepath.Join(cwd, "t")); err != nil || !info.IsDir() {
 		t.Errorf("the target was not created under the caller's cwd %s (%v)\n%s", cwd, err, out)
@@ -69,4 +61,35 @@ func TestRelativePathsResolveFromCallerCwd(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(line, "runs", "r", "run.json")); err != nil {
 		t.Errorf("the run was not kept in its line's folder in the caller's target: %v\n%s", err, out)
 	}
+	if !strings.Contains(out, "run r finished") {
+		t.Errorf("the run did not finish:\n%s", out)
+	}
+}
+
+// buildFactory builds the factory into a folder of its own. Its daemon is
+// stopped when the test ends.
+func buildFactory(t *testing.T) string {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "factory")
+	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building the factory: %v\n%s", err, out)
+	}
+	t.Cleanup(func() {
+		if out, err := exec.Command(binary, "stop").CombinedOutput(); err != nil {
+			t.Errorf("stopping the factory: %v\n%s", err, out)
+		}
+	})
+	return binary
+}
+
+// runFactory runs the factory in dir, and fails the test unless it succeeds.
+func runFactory(t *testing.T, binary, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(binary, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("factory %s, in %s: %v\n%s", strings.Join(args, " "), dir, err, out)
+	}
+	return string(out)
 }

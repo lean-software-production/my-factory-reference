@@ -119,9 +119,10 @@ func machinesOn(lineDir string) ([]string, error) {
 	return names, err
 }
 
-// The lines the student wrote are in the first target they built, as the
-// README lays it out. Each example's targets get copies of them.
-const sourceLines = "../../tetris/tetris-005/.assembly-lines"
+// The lines the student wrote are in the target homework 7 builds, as its
+// README lays it out, with machines that run as ACP agents. Each example's
+// targets get copies of them.
+const sourceLines = "../../tetris/tetris-007/.assembly-lines"
 
 // lineFiles lists the files of a line a copy of it gets: those Git would
 // keep, never a login, and never a run. The runs on the student's own lines
@@ -275,8 +276,9 @@ func (w *world) setLensOf(machine, lens string) error {
 	return os.WriteFile(path, lensLine.ReplaceAll(raw, []byte("${1}"+lens+".")), 0o644)
 }
 
-// everyMachineRunsPi has each machine run the real pi, signed in with your
-// own login, copied into the machine's folder as a student would.
+// everyMachineRunsPi has each machine run the real pi, through its ACP
+// bridge, pi-rpc-acp, signed in with your own login, copied into the
+// machine's folder as a student would.
 func (w *world) everyMachineRunsPi() error {
 	w.realPi = true
 	home, err := os.UserHomeDir()
@@ -293,7 +295,7 @@ func (w *world) everyMachineRunsPi() error {
 			return err
 		}
 		for _, role := range roles {
-			if err := w.setHarnessOn(lineDir, role, "pi"); err != nil {
+			if err := w.setHarnessOn(lineDir, role, "pi-rpc-acp"); err != nil {
 				return err
 			}
 			if err := os.WriteFile(filepath.Join(w.machineDirOn(lineDir, role), "auth.json"), login, 0o600); err != nil {

@@ -16,8 +16,9 @@ import (
 var (
 	factoryBinary string // the factory, copied into each example's workspace
 	agentDouble   string // the double chosen as the agent on the command line
-	fakePiDir     string // holds a double called pi, put first on the PATH
-	spyDouble     string // wraps the real pi, noting whether it changed the target
+	fakePiDir     string // holds a double called pi-rpc-acp, put first on the PATH
+	spyDouble     string // wraps the real pi-rpc-acp, noting whether it changed the target
+	bridgeDir     string // the starter's tools/pi-rpc-acp, which runs pi as an ACP agent
 )
 
 func TestMain(m *testing.M) {
@@ -47,7 +48,7 @@ func buildSuite(dir string) error {
 	builds := [][]string{
 		{"-o", factoryBinary, "../cmd/factory"},
 		{"-o", agentDouble, "./doubles/agent"},
-		{"-o", filepath.Join(fakePiDir, "pi"), "./doubles/agent"},
+		{"-o", filepath.Join(fakePiDir, "pi-rpc-acp"), "./doubles/agent"},
 		{"-o", spyDouble, "./doubles/spy"},
 	}
 	for _, args := range builds {
@@ -57,6 +58,10 @@ func buildSuite(dir string) error {
 		}
 	}
 
+	var err error
+	if bridgeDir, err = filepath.Abs(filepath.Join("..", "..", "tools", "pi-rpc-acp")); err != nil {
+		return err
+	}
 	gitconfig := filepath.Join(dir, "gitconfig")
 	config := "[user]\n\tname = Factory Suite\n\temail = suite@example.com\n" +
 		"[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n"

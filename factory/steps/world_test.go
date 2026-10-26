@@ -36,6 +36,9 @@ type behaviour struct {
 	Prose              []string          `json:"prose,omitempty"`
 	SynthesiserRejects int               `json:"synthesiser_rejects,omitempty"`
 	SynthesiserFinding string            `json:"synthesiser_finding,omitempty"`
+
+	DoerSays     []string `json:"doer_says,omitempty"`
+	DoerThenSays []string `json:"doer_then_says,omitempty"`
 }
 
 // A run of the factory that the double plays the agent in is short; one
@@ -81,6 +84,11 @@ type world struct {
 	timedOut   bool
 	headBefore string
 	unrelated  *repoState // the factory's files and unrelated changes, once set up
+
+	// What the latest watch command has shown, while it runs and after.
+	watching *watcher
+	// The latest run's record, as read.
+	record []recordEvent
 
 	// The latest game started in the target.
 	screen string
@@ -155,10 +163,26 @@ func (w *world) setUp() error {
 	return commitAll(w.repo, "A copy of the factory", ".")
 }
 
-func (w *world) tearDown() {
+// tearDown stops what the example started, the factory included, and
+// removes its workspace. It fails the example if a machine was still
+// running once the factory had stopped.
+func (w *world) tearDown() error {
+	var errs []error
+	if w.watching != nil {
+		w.watching.stop()
+	}
+	if w.repo != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if out, err := w.factory(ctx, "stop"); err != nil {
+			errs = append(errs, fmt.Errorf("stopping the factory: %v\n%s", err, out))
+		}
+		errs = append(errs, w.noMachineRunning())
+	}
 	if w.ws != "" {
 		os.RemoveAll(w.ws)
 	}
+	return errors.Join(errs...)
 }
 
 // useTarget makes the target, a folder in the repository, the current one.
@@ -177,9 +201,35 @@ type invocation struct {
 // run runs the current run, as the latest "a run named" step named it.
 func (w *world) run() error { return w.runRun(w.current(), invocation{}) }
 
-// runRun runs the factory from the repository root, through bin/factory,
-// as a student would, on the run.
+// runRun runs the run to the end, as the factory runs a run from homework
+// 7: it starts it, then waits until it has finished, by watching it. What
+// the factory said is what both commands said. Nothing is held part-way.
 func (w *world) runRun(r *runSpec, how invocation) error {
+	if err := w.releaseHolds(); err != nil {
+		return err
+	}
+	limit := doubleRunLimit
+	if w.realPi {
+		limit = realRunLimit
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	if err := w.start(ctx, r, how); err != nil {
+		return err
+	}
+	if w.exitErr == nil {
+		var watched string
+		watched, w.exitErr = w.factory(ctx, "watch", r.name, "--target", r.target)
+		w.output += watched
+	}
+	w.timedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
+	return nil
+}
+
+// start has the factory start the run, from the repository root, through
+// bin/factory, as a student would. The command returns once the run has
+// started. The commits it makes are counted from here.
+func (w *world) start(ctx context.Context, r *runSpec, how invocation) error {
 	w.ran = r
 	args := []string{"--run", r.name}
 	if !w.noTarget {
@@ -206,25 +256,17 @@ func (w *world) runRun(r *runSpec, how invocation) error {
 	if w.headBefore, err = git(w.repo, "rev-parse", "HEAD"); err != nil {
 		return err
 	}
+	w.output, w.exitErr = w.factory(ctx, args...)
+	w.timedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
+	return nil
+}
 
-	limit := doubleRunLimit
-	env := append(os.Environ(), "DOUBLE_DIR="+w.doubleDir)
-	if w.realPi {
-		limit = realRunLimit
-	} else {
-		// No machine signs in with an API key unless an example gives it one.
-		env = slices.DeleteFunc(env, func(kv string) bool {
-			name, _, _ := strings.Cut(kv, "=")
-			return strings.HasSuffix(name, "_API_KEY")
-		})
-		env = append(env, "PATH="+fakePiDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	}
-	env = append(env, w.env...)
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
-	defer cancel()
+// factory runs bin/factory from the repository root with the arguments, in
+// the example's environment, and returns what it said.
+func (w *world) factory(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, filepath.Join(w.repo, "bin", "factory"), args...)
 	cmd.Dir = w.repo
-	cmd.Env = env
+	cmd.Env = w.environment()
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -232,10 +274,25 @@ func (w *world) runRun(r *runSpec, how invocation) error {
 		cmd.Stdout = io.MultiWriter(&out, os.Stdout)
 		cmd.Stderr = io.MultiWriter(&out, os.Stderr)
 	}
-	w.exitErr = cmd.Run()
-	w.output = out.String()
-	w.timedOut = errors.Is(ctx.Err(), context.DeadlineExceeded)
-	return nil
+	err := cmd.Run()
+	return out.String(), err
+}
+
+// environment is what the factory is run in: the suite's, with the
+// doubles' folder, and pi-rpc-acp on the PATH as a Codespace has it. Unless
+// the machines run the real pi, the double called pi-rpc-acp comes first,
+// and no machine signs in with an API key unless an example gives it one.
+func (w *world) environment() []string {
+	env := append(os.Environ(), "DOUBLE_DIR="+w.doubleDir)
+	path := os.Getenv("PATH") + string(os.PathListSeparator) + bridgeDir
+	if !w.realPi {
+		env = slices.DeleteFunc(env, func(kv string) bool {
+			name, _, _ := strings.Cut(kv, "=")
+			return strings.HasSuffix(name, "_API_KEY")
+		})
+		path = fakePiDir + string(os.PathListSeparator) + path
+	}
+	return append(append(env, "PATH="+path), w.env...)
 }
 
 // runToSuccess runs the factory, and fails unless it succeeds.
@@ -355,8 +412,7 @@ func copyFile(from, to string, mode os.FileMode) error {
 func InitializeScenario(sc *godog.ScenarioContext) {
 	w := newWorld()
 	sc.After(func(ctx context.Context, _ *godog.Scenario, _ error) (context.Context, error) {
-		w.tearDown()
-		return ctx, nil
+		return ctx, w.tearDown()
 	})
 	w.registerSetupSteps(sc)
 	w.registerLineSteps(sc)
@@ -368,4 +424,6 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	w.registerValidationSteps(sc)
 	w.registerMachineSteps(sc)
 	w.registerFanOutSteps(sc)
+	w.registerDaemonSteps(sc)
+	w.registerWatchSteps(sc)
 }

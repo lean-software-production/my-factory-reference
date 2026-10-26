@@ -65,27 +65,39 @@ func (f runFolder) save() error {
 	return os.WriteFile(filepath.Join(f.dir, settingsFile), append(raw, '\n'), 0o644)
 }
 
+// resolved is the invocation with its target and seed as absolute paths.
+// Relative paths are the caller's: they are resolved from its working
+// directory, before they are sent to the factory, which has its own. A
+// target and a run's name are checked for, as nothing can be done without
+// them.
+func (i invocation) resolved() (invocation, error) {
+	if i.target == "" {
+		return i, errors.New("a target is required: give one with --target <folder>")
+	}
+	if i.run == "" || i.run != filepath.Base(i.run) || strings.HasPrefix(i.run, ".") {
+		return i, errors.New("a run is required: name it with --run <name>")
+	}
+	var err error
+	if i.target, err = filepath.Abs(i.target); err != nil {
+		return i, err
+	}
+	if i.seed != "" {
+		if i.seed, err = filepath.Abs(i.seed); err != nil {
+			return i, err
+		}
+	}
+	return i, nil
+}
+
 // openRun finds the run the invocation names in its target, and checks what
 // it was given against what the run remembers. A run that has not been
 // started is given its line and seed here, but nothing is written yet.
 func (i invocation) openRun() (runFolder, error) {
-	if i.target == "" {
-		return runFolder{}, errors.New("a target is required: give one with --target <folder>")
-	}
-	if i.run == "" || i.run != filepath.Base(i.run) || strings.HasPrefix(i.run, ".") {
-		return runFolder{}, errors.New("a run is required: name it with --run <name>")
-	}
-	target, err := filepath.Abs(i.target)
+	i, err := i.resolved()
 	if err != nil {
 		return runFolder{}, err
 	}
-	seed := ""
-	if i.seed != "" {
-		// Relative paths are the caller's: resolve them from the working directory.
-		if seed, err = filepath.Abs(i.seed); err != nil {
-			return runFolder{}, err
-		}
-	}
+	target, seed := i.target, i.seed
 
 	f := runFolder{target: target, name: i.run}
 	found, err := findRun(target, i.run)

@@ -1,25 +1,36 @@
-// Command agent is a test double for a coding agent such as pi. It is called
-// the way the factory calls pi, in the target folder:
+// Command agent is a test double for a coding agent such as pi, run as an
+// ACP agent as pi is through pi-rpc-acp: it speaks the Agent Client Protocol
+// on its standard input and output. It is started the way the factory starts
+// pi-rpc-acp, in the target folder:
 //
-//	agent -p --no-context-files --no-skills --model <model> \
-//	    --append-system-prompt <AGENTS.md> <prompt>
+//	agent --no-context-files --no-skills --model <model> \
+//	    --append-system-prompt <AGENTS.md>
 //
-// with PI_CODING_AGENT_DIR set to the machine's folder. It plays the machine
-// its instructions describe: the planner, the doer, the validator, or one of
-// the three big brains, a reviewer or the synthesiser. Several may run at
-// once, as the branches of a fan out do.
+// with PI_CODING_AGENT_DIR set to the machine's folder, and given its prompt
+// in a session/prompt request. It plays the machine its instructions
+// describe: the planner, the doer, the validator, or one of the three big
+// brains, a reviewer or the synthesiser. Several may run at once, as the
+// branches of a fan out do. What it generates it sends as
+// agent_message_chunk updates, a line at a time, and it reports what its
+// turn spent as usage on its response: a token in for each byte it was
+// given, and a token out for each byte it generated.
 //
 // Like pi, it is given the AGENTS.md named by --append-system-prompt, and
 // signs in with the auth.json in PI_CODING_AGENT_DIR or else with an API key
 // from the environment; with neither it fails, as pi does.
 //
 // It keeps everything in the folder named by DOUBLE_DIR:
-//   - calls.log: one line per call, the name it was called by (pi or agent),
-//     the machine it played, and the machine's folder's name
+//   - calls.log: one line per call, the name it was called by (pi-rpc-acp or
+//     agent), the machine it played, and the machine's folder's name
 //   - prompts/<n>.txt: what call n was given: the AGENTS.md, then the prompt
 //   - signins/<n>.txt: how call n signed in: the login it found or "api key"
+//   - said/<n>.txt: what call n generated, a line at a time
+//   - usage.log: what each call reported it spent, "<n> <machine> <in> <out>"
 //   - pids.log: the process of each call, so a step can tell whether any is
 //     still running
+//   - holds.log: "<n> <machine>" for each call that is part-way through its
+//     job, held there while a file hold-<role> (hold-doer, hold-reviewer)
+//     is in the folder
 //   - behaviour.json: what it does, written by the step definitions
 //
 // Calls that run at the same time take turns at writing these, holding a
@@ -80,6 +91,11 @@ type Behaviour struct {
 	// is not satisfied; -1 for always. It then finds SynthesiserFinding.
 	SynthesiserRejects int    `json:"synthesiser_rejects,omitempty"`
 	SynthesiserFinding string `json:"synthesiser_finding,omitempty"`
+
+	// DoerSays are lines the doer says as it begins its attempt, and
+	// DoerThenSays lines it says once it carries on to the attempt's end.
+	DoerSays     []string `json:"doer_says,omitempty"`
+	DoerThenSays []string `json:"doer_then_says,omitempty"`
 }
 
 // planPath is where the plan is, as the factory's prompt says: either "The
@@ -102,12 +118,17 @@ func planIn(prompt string) string {
 var checklistLine = regexp.MustCompile(`^- \[( |x)\] (.+)$`)
 
 func main() {
+	serve(play)
+}
+
+// play is a turn: the double plays the machine its instructions say it is.
+// It fails the turn, as pi does, if it cannot sign in.
+func play(prompt string) error {
 	dir := os.Getenv("DOUBLE_DIR")
 	if dir == "" {
 		answer(map[string]any{"complete": true})
-		return
+		return nil
 	}
-	prompt := os.Args[len(os.Args)-1]
 	role := machineIn(prompt)
 	machine := filepath.Base(os.Getenv("PI_CODING_AGENT_DIR"))
 	// The synthesiser is given the reviewers' results and nothing else: no
@@ -115,7 +136,10 @@ func main() {
 	if role != "synthesiser" {
 		planPath = planIn(prompt)
 	}
-	n := logCall(dir, role, machine, prompt)
+	n, signedIn := logCall(dir, role, machine, prompt)
+	if !signedIn {
+		return fmt.Errorf("No API key found for %s.\n\nUse /login to log into a provider via OAuth or API key.", provider())
+	}
 	if role != "synthesiser" {
 		keepNote(role, prompt)
 	}
@@ -124,37 +148,75 @@ func main() {
 	raw, err := os.ReadFile(filepath.Join(dir, "behaviour.json"))
 	if err != nil {
 		answer(map[string]any{"complete": true})
-		return
+		return nil
 	}
 	if err := json.Unmarshal(raw, &b); err != nil {
 		fail("reading behaviour: %v", err)
 	}
 	if slices.Contains(b.Prose, machine) {
-		fmt.Println("I looked at the work and it seems fine.")
-		return
+		say("I looked at the work and it seems fine.")
+		return nil
 	}
 
 	switch role {
 	case "validator":
 		if b.ValidatorSays != "" {
-			fmt.Println(b.ValidatorSays)
+			say(b.ValidatorSays)
 		}
 		if b.ValidatorNoResult {
-			fmt.Println("I looked at the work and it seems fine.")
-			return
+			say("I looked at the work and it seems fine.")
+			return nil
 		}
 		answer(validate(b, dir))
 	case "reviewer":
 		if b.ReviewersWait {
 			waitForTheOtherReviewers(dir, n)
 		}
-		answer(review(b, dir, machine))
+		hold(dir, role, machine, n)
+		res := review(b, dir, machine)
+		if res["satisfied"] == true {
+			say("satisfied")
+		} else {
+			say("not satisfied")
+		}
+		answer(res)
 	case "synthesiser":
 		answer(synthesise(b, dir))
 	case "planner":
 		answer(plan(b))
 	default:
-		answer(work(b))
+		for _, line := range b.DoerSays {
+			say(line)
+		}
+		res := work(b)
+		hold(dir, "doer", machine, n)
+		for _, line := range b.DoerThenSays {
+			say(line)
+		}
+		answer(res)
+	}
+	return nil
+}
+
+// hold keeps the machine part-way through its job while the double's
+// folder holds hold-<role>, noting in holds.log that it is held. It goes
+// on when the hold is taken away, and gives up if the factory that called
+// it goes away first.
+func hold(dir, role, machine string, n int) {
+	held := filepath.Join(dir, "hold-"+role)
+	if _, err := os.Stat(held); err != nil {
+		return
+	}
+	withLock(dir, func() { appendLine(filepath.Join(dir, "holds.log"), fmt.Sprintf("%d %s", n, machine)) })
+	for {
+		if _, err := os.Stat(held); err != nil {
+			return
+		}
+		select {
+		case <-closed:
+			os.Exit(0)
+		case <-time.After(10 * time.Millisecond):
+		}
 	}
 }
 
@@ -189,7 +251,7 @@ const reviewers = 3
 // waitForTheOtherReviewers holds the reviewer, the nth call, until all three
 // reviewers of its attempt have begun: three reviewer calls for each attempt
 // so far. It stops waiting, and fails, if the run finishes first, which it
-// knows by the factory that called it going away.
+// knows by the factory that called it closing its input.
 func waitForTheOtherReviewers(dir string, n int) {
 	mine := 0
 	for i, c := range readCalls(dir) {
@@ -198,12 +260,12 @@ func waitForTheOtherReviewers(dir string, n int) {
 		}
 	}
 	want := (mine + reviewers - 1) / reviewers * reviewers
-	factory := os.Getppid()
 	for callsTo(dir, "reviewer") < want {
-		if os.Getppid() != factory {
+		select {
+		case <-closed:
 			fail("the run finished before all three reviewers began")
+		case <-time.After(10 * time.Millisecond):
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -391,17 +453,17 @@ func machineIn(_ string) string {
 // logCall records the call: the name it was called by, its role and its
 // machine's folder, what it was given (the instructions in the AGENTS.md it
 // was pointed at, then the prompt), how it signed in and its process. It
-// returns the call's number. A call that cannot sign in fails then, as pi
-// does.
-func logCall(dir, role, machine, prompt string) int {
+// returns the call's number, and whether it signed in.
+func logCall(dir, role, machine, prompt string) (int, bool) {
 	given := prompt
 	if instructions := appendedInstructions(); instructions != "" {
 		given = instructions + "\n---\n" + prompt
 	}
 	how := signIn()
+	spentIn = len(given)
 	var n int
 	withLock(dir, func() {
-		for _, sub := range []string{"prompts", "signins"} {
+		for _, sub := range []string{"prompts", "signins", "said"} {
 			if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
 				fail("%v", err)
 			}
@@ -416,11 +478,8 @@ func logCall(dir, role, machine, prompt string) int {
 		appendLine(filepath.Join(dir, "pids.log"), strconv.Itoa(os.Getpid()))
 		appendLine(filepath.Join(dir, "calls.log"), fmt.Sprintf("%s %s %s", filepath.Base(os.Args[0]), role, machine))
 	})
-	if how == "" {
-		fmt.Fprintln(os.Stderr, "No API key found. Use /login to log into a provider.")
-		os.Exit(1)
-	}
-	return n
+	callNumber = n
+	return n, how != ""
 }
 
 // withLock runs f holding the lock on the double's folder, so that calls
@@ -496,7 +555,18 @@ func hasAPIKey() bool {
 
 func answer(result map[string]any) {
 	line, _ := json.Marshal(result)
-	fmt.Println(string(line))
+	say(string(line))
+}
+
+// provider is the provider of the model it was given.
+func provider() string {
+	for i, arg := range os.Args {
+		if arg == "--model" && i+1 < len(os.Args) {
+			p, _, _ := strings.Cut(os.Args[i+1], "/")
+			return p
+		}
+	}
+	return "its provider"
 }
 
 func fail(format string, args ...any) {

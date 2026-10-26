@@ -64,14 +64,14 @@ func (w *world) firstAttemptIsUntestable() error {
 func (w *world) validatorFindings() ([]string, error) { return w.findingsOf("validator") }
 
 // findingsOf are what the machines in those folders found wrong, in the
-// latest run, as the factory reported their results: "<machine>: <result>".
+// latest run, as watching it showed their results: "<machine> | <result>".
 func (w *world) findingsOf(machines ...string) ([]string, error) {
 	var found []string
-	for _, line := range strings.Split(w.output, "\n") {
-		machine, said, ok := strings.Cut(strings.TrimSpace(line), ": ")
-		if !ok || !slices.Contains(machines, machine) {
+	for _, g := range generated(w.output) {
+		if !slices.Contains(machines, g.machine) {
 			continue
 		}
+		said := g.text
 		var res struct {
 			Satisfied *bool `json:"satisfied"`
 			Findings  []any `json:"findings"`

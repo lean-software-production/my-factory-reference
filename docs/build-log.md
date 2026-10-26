@@ -764,3 +764,222 @@ The whole suite race-built, `cd factory && GOFLAGS=-race go test ./...
 (`logs/006-fix1-real-fan-out.log`). It went three attempts, as before.
 The new kill path only changes how a machine is stopped, not how it
 finishes, so the other real-agent examples were not rerun.
+
+## Homework 007: Watching
+
+- **Adopted:** iteration `007-watching` from the tutorial's `main`, at 23:52.
+- **Red:** with the adopted spec and homework 6's factory, 86 examples ran
+  (the 9 `@real-agent` ones left out): 70 passed and 16 were undefined (1031
+  steps: 964 passed, 54 undefined, 13 skipped). The 16 are the new examples
+  of `monitoring.feature` (3), `observability.feature` (6) and
+  `orchestration.feature` (7). The other changes to the features are rule
+  text in `machine.feature` and `orchestration.feature`. The failures were
+  all in what the README calls new. No step-drift problem in the tutorial
+  and no regression.
+- **The target:** the README's commands build `tetris/tetris-007`, so its
+  three lines (`careful`, `quick`, `three-big-brains`) are copies of
+  `tetris-005`'s, made with `cp -r` so the logins came along (Git ignores
+  them). Each machine's `machine.json` now names its ACP agent,
+  `{"harness": "pi-rpc-acp", "model": ...}`. `tetris-005` is left as
+  homework 6 had it. The suite copies its lines from `tetris-007` now.
+- **What changed in the factory:**
+  - **Machines are ACP agents** (`internal/machine`). The factory starts
+    the machine's agent in the target, with `PI_CODING_AGENT_DIR` set to its
+    folder and the arguments `pi-rpc-acp` passes on to pi:
+    `--no-context-files --no-skills --model <model> --append-system-prompt
+    <folder>/AGENTS.md`. `--no-skills` is still needed (homework 3), and the
+    bridge passes it on: a pi started this way named the codeword in its
+    `AGENTS.md` and said it had no skills. The factory sends `initialize`,
+    `session/new` (`cwd` the target) and `session/prompt`. It reads the
+    `agent_message_chunk` updates a line at a time, the last JSON line as
+    the result, and the `usage` on the response. A machine naming no
+    harness gets `pi-rpc-acp`. Harnesses are found on the caller's `PATH`,
+    not the daemon's.
+  - **Stopping a machine** works as in homework 6: SIGTERM to its process
+    group, 3s, SIGKILL. An agent that has answered is told it is done by the
+    end of its input (the bridge then kills pi), and is stopped if it is
+    still there after 3s. An agent that exits before answering fails the
+    call at once, with what it wrote on its standard error. So does one that
+    ends its turn having generated nothing (see Problems found).
+  - **The daemon** (`cmd/factory/daemon.go`, `client.go`). `bin/factory
+    --run ...` resolves its paths from the caller's working directory, sends
+    them and the caller's environment to the daemon, and returns with
+    `started run tetris` once the run is checked, its folder is committed
+    and its record has begun. The daemon is started by the first command
+    that needs it, in a session of its own, and listens on a Unix socket in
+    a folder in the system's temporary folder named for the factory's
+    program (one daemon per factory). It holds a lock while it runs, so a
+    socket left by one that crashed is known to be stale. It runs one run at
+    a time: another start is refused with `refused: run tetris is running`.
+    `bin/factory stop tetris --target ...` stops the run and returns once it
+    has stopped and its folder is committed; `bin/factory stop` does that
+    and then stops the daemon, and returns once it has gone. A stop is
+    SIGTERM to every machine running, so the attempt is abandoned: no work
+    is committed and the planner is not called. What the machines wrote is
+    left in the target. The daemon catches only the signals of SIGINT,
+    SIGTERM and SIGHUP it wasn't started ignoring, as homework 6's fix did,
+    and a daemon started under `nohup` inherits the ignored SIGHUP.
+    `bin/factory status` says whether the factory is running, and which run.
+    It isn't in the README; the steps use it to check "the factory is
+    running" and "the run is running".
+  - **The record** is `record.jsonl` in the run's folder, beside its plan:
+    an event a line, `watch.Event` as JSON. The events are the run starting
+    and ending (finished, stopped or failed, with why), each machine
+    starting its turn (with its prompt), each line it generates, its result,
+    what its turn spent (tokens in and out, provider and model), and its turn
+    ending. It is committed with the run's folder: after each planner call,
+    and at the end of every invocation, however it ended. A run started again
+    adds to the same record.
+  - **`bin/factory watch tetris --target ...`** reads the record from the
+    start, then follows it, until the daemon is no longer running the run.
+    It renders through `internal/watch` (`watch.New(w, line)`,
+    `(*Watcher).Render(ev)`), plainly: `doer       | <line>`, a `running`
+    line when the machines running change, a `tokens` line after each turn
+    (the machine's totals, each provider's, and the run's), and how the run
+    ended. It exits 0 only if the run finished. Watching a finished run
+    needs no daemon.
+  - The factory no longer prints results as `machine: {json}`; watching
+    shows them.
+- **Doubles:** the agent double is now an ACP agent. It reads its prompt
+  from `session/prompt`, sends what it says as `agent_message_chunk`s, and
+  reports usage (a token in per byte it was given, a token out per byte it
+  said). It keeps what each call said (`said/<n>.txt`) and spent
+  (`usage.log`). A file `hold-doer` or `hold-reviewer` in its folder holds
+  that machine part-way through its job, noted in `holds.log`, until the
+  file goes, or the factory closes its input. The doer can say lines before
+  and after the hold, and a reviewer says `satisfied` before its result. The
+  fake pi on the suite's `PATH` is now called `pi-rpc-acp`. The spy sits
+  between the factory and the real `pi-rpc-acp`, passing ACP through and
+  noting the target before each prompt and after its answer.
+- **Steps:** "the factory runs the run" starts it, then runs `watch` to the
+  end, and what the factory said is both commands' output. The steps that
+  leave a run running hold the doer or reviewers and wait until the double
+  says they are held. "I watch" and "I am watching" start `watch` in a
+  process of their own and wait for what they expect to appear. The token
+  checks compare what `watch` shows with what the doubles reported, to the
+  precision shown (12.4k is 12,350 to 12,450). "I read the run's record"
+  reads `record.jsonl`. Every example ends by stopping the factory, and fails
+  if a daemon or a double is still running after that.
+- **Green:** 86 of 86 examples and 1031 steps pass in about 83s, at 00:21.
+- **How the examples went:** not one at a time this time. The first new
+  example, "The doer and the validator", needed machines speaking ACP, the
+  record, `watch` and the daemon all at once, and the rest of the
+  homework's examples are those pieces seen from different sides. Once
+  they were written, all 86 passed on the first full run. To check the new
+  steps can fail, I broke the factory on purpose, one way at a time, and ran
+  the three new feature files (32 examples). Each break made examples fail:
+  - a machine's lines not passed on as they arrive (only its last, when
+    its turn ends): 4 ("The doer is working", "Well into the run", ...);
+  - no usage recorded: 4 (all of `monitoring.feature`, and "A run that has
+    finished");
+  - stopping a run doing nothing: 4;
+  - a second run allowed: 1, "A second run while one is running";
+  - a stopped run's work committed: 3 ("The doer is mid-attempt", "The
+    reviewers are mid-review", "Starting the tetris run again");
+  - no `running` lines: 1, "During fan out";
+  - the run's folder not committed at the end: 3;
+  - starting a run waiting until it ends: "Starting a run";
+  - every usage recorded against one provider: "Three reviewers on three
+    providers";
+  - a stop shown as "ended": "The run is stopped while I watch";
+  - the daemon exiting without stopping its run or answering `stop`: all 32,
+    at the teardown that stops the factory.
+- **Unit tests:** `internal/machine/harness_test.go`:
+  `TestUnsignedHarnessFailsFast` (Review Focus 2, written before the ACP
+  client: a fake `pi-rpc-acp` that exits 1 with "not authenticated", a
+  machine with an empty folder; it failed first because the error didn't
+  carry the harness's reason, and now fails in 2ms with "the doer
+  (.../pi-rpc-acp) stopped before it answered (exit status 1): not
+  authenticated"), `TestAHarnessThatSaysNothingFailsFast`,
+  `TestAMachineSaysWhatItGeneratesLineByLine`, and homework 6's process
+  tests, moved here and rewritten with harnesses that speak ACP
+  (`internal/acptest`). `internal/watch/watch_test.go` checks the plain
+  rendering. `TestRelativePathsResolveFromCallerCwd` and
+  `TestAHangupStopsARunUnlessHangupsAreIgnored` now start a daemon, watch,
+  and stop it.
+- **Concurrency checks:** `go test -race` of `cmd/factory` and `internal/...`
+  passes. The four feature files with fan out, the daemon and watching
+  (`monitoring`, `observability`, `orchestration`, `fan-out`) also pass with
+  the factory and doubles race-built (44 of 44, 425s, no data race;
+  `logs/007-race-new-features.log`).
+- **No process outlives its example:** after every default and race-built
+  run, `ps` showed no daemon, `pi-rpc-acp`, `pi` or double left, and the
+  daemons' folders were gone.
+- **Time:** about 30 minutes from the fetch to a green suite (23:52 to
+  00:21), then 30 more for the mutation checks, the race-built run and the
+  README commands.
+- **README commands**, through `bin/factory` from the repository root of a
+  scratch repository holding copies of `tetris-007`'s `careful` and `quick`
+  lines, with the agent double first on the `PATH` as `pi-rpc-acp`, and the
+  doer held: the start printed `started run tetris` and returned; `status`
+  showed the run; `watch` caught up (planner, then the doer's first line)
+  and followed; the `snake` run on `snake/snake1` was refused with
+  `factory: refused: run tetris is running`; `stop tetris` stopped it,
+  leaving the doer's `alpha.txt` uncommitted, the plan as it was, and the
+  run's folder committed; started again by name and target, the run
+  finished (alpha and beta committed); `watch` of the finished run, with no
+  daemon running, showed both invocations, the stop included; `stop`
+  stopped the factory. The record was committed in the run's folder, and no
+  login was committed.
+- **Pi signed out, for real** (Review Focus 2): with the real `pi-rpc-acp`
+  and pi, a machine with no login is stopped before any machine runs ("the
+  planner cannot sign in to openai-codex"). One whose `auth.json` has an
+  `openai-codex` entry with no tokens gets past that check; its run failed
+  1.6s after the start with "the planner (pi-rpc-acp) ended its turn having
+  generated nothing". Before the factory treated an empty turn as a
+  failure, it said only "could not read the planner's result".
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 75m -v`,
+with the pi wrapper first on the `PATH` (for the judge) and the starter's
+`tools/pi-rpc-acp` on it, as a Codespace has it: 00:46 to 01:16 (**29m 51s**),
+**9 of 9 pass**. Every machine ran as pi through the real `pi-rpc-acp`, and
+every run was started by the daemon and watched to its end.
+
+- "Reviewers that look at testability" 3m 26s; "Instructions above the
+  target are not the machine's" 4m 06s; "A Tetris with different details"
+  3m 02s; "The assembly line is given a seed and nothing else" 3m 28s; "The
+  plan comes from the seed" 3m 40s; "A validator that looks at testability"
+  3m 15s; "...at something else" 2m 26s; "The first task's work is
+  untestable" 3m 07s; "A finding on the first task" 3m 18s.
+- **Tokens**, from the runs' records, as `watch` totalled them: 41.4k to
+  97.8k a run, 633.6k for the nine (inputTokens and outputTokens as the
+  bridge reports them, which leave out cache reads). The judge's tokens
+  aren't counted. Log: `logs/007-real-agent.log`.
+- No daemon, `pi-rpc-acp`, `pi` or double was left running after the suite.
+
+### Problems found
+
+One in the starter, none in the tutorial:
+
+- **`pi-rpc-acp` drops pi's errors.** When pi can't take a turn, its RPC
+  mode ends the turn with `stopReason: "error"` and an `errorMessage` (for
+  a login with no tokens, "No API key for provider: openai-codex"). The
+  bridge passes over that and answers `session/prompt` with `end_turn` and
+  no text, so the factory can't say why the machine said nothing. (With no
+  login at all, pi refuses the prompt outright, and the bridge does pass
+  that on.) The fix is seven lines in the bridge: remember the error at
+  `turn_end`, and fail the prompt with it at `agent_end`. Checked with a
+  scratch ACP client: the empty login now gives an error response with
+  pi's message in 0.6s, no login gives the error as before, and a good
+  login answers as before. It is committed on a local branch,
+  `pi-rpc-acp-reports-pi-errors`, in a fresh clone of the starter
+  (`/home/ensembleworks-agent/work/starter-fixes`, commit `bb5a9c7`). **The
+  PR was not raised**: pushing to the public starter and opening the PR was
+  refused by this session's permissions, so it waits for David's say-so.
+  Until then the factory names the machine and harness of an empty turn
+  itself (above), and this repository's copy of the bridge is left as the
+  starter has it.
+
+Things to note:
+
+- pi-rpc-acp always runs pi with `--no-session`, so since this homework
+  pi's sessions are no longer kept in the machine's folder (homework 3 left
+  `--no-session` out to keep them). The run's record now keeps what each
+  machine was given and generated.
+- `bin/factory status` is a command the README doesn't list. The steps need
+  a way to ask whether the factory and a run are running, and a daemon
+  with no way to ask seemed worse than one more command.
+- `watch` of a run that is running follows it until it ends; the steps for
+  "I watch the run" read what it has shown so far.

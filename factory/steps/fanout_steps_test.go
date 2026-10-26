@@ -12,7 +12,7 @@ import (
 
 // The three big brains: three reviewers, reviewer_1 to reviewer_3, and the
 // synthesiser where their branches meet. They are the student's, on the
-// three-big-brains line of the first target they built; a line in an
+// three-big-brains line of their target (see sourceLines); a line in an
 // example gets copies of them.
 var (
 	reviewers  = []string{"reviewer_1", "reviewer_2", "reviewer_3"}

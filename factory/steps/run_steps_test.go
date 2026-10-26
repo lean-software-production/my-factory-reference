@@ -51,8 +51,9 @@ func (w *world) registerRunSteps(sc *godog.ScenarioContext) {
 	sc.Step(`^it reports that there is no seed$`, func() error { return w.reports("there is no seed") })
 	sc.Step(`^it reports that a target is required$`, func() error { return w.reports("a target is required") })
 
-	sc.Step(`^pi has been called$`, func() error { return w.calledBy("pi", true) })
-	sc.Step(`^pi has not been called$`, func() error { return w.calledBy("pi", false) })
+	// pi is run as an ACP agent through its bridge, pi-rpc-acp.
+	sc.Step(`^pi has been called$`, func() error { return w.calledBy("pi-rpc-acp", true) })
+	sc.Step(`^pi has not been called$`, func() error { return w.calledBy("pi-rpc-acp", false) })
 	sc.Step(`^the doer's chosen harness has been called$`, func() error {
 		return w.calledBy(filepath.Base(agentDouble), true)
 	})
@@ -206,7 +207,7 @@ func (w *world) startRun(name string) error {
 	if err := w.runRunToSuccess(r, invocation{}); err != nil {
 		return err
 	}
-	for _, forgotten := range []string{"calls.log", "prompts", "signins", "spy.log", "pids.log", "reports.log"} {
+	for _, forgotten := range []string{"calls.log", "prompts", "signins", "said", "usage.log", "holds.log", "spy.log", "pids.log", "reports.log"} {
 		if err := os.RemoveAll(filepath.Join(w.doubleDir, forgotten)); err != nil {
 			return err
 		}

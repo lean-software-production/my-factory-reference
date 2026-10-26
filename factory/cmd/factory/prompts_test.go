@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lean-software-production/my-factory-reference/factory/internal/machine"
 )
 
 // A finding is recorded as a subtask, and a task is not done until its
@@ -16,7 +18,7 @@ func TestInstructionsKeepATaskOpenUntilItsSubtasksAreDone(t *testing.T) {
 		"doer: task waits":          {"doer", "not done until every one of its subtasks is"},
 		"planner leaves open tasks": {"planner", "unless it has a subtask that is not done"},
 	} {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tetris", "tetris-005", ".assembly-lines", "careful", "machines", tc.machine, "AGENTS.md"))
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tetris", "tetris-007", ".assembly-lines", "careful", "machines", tc.machine, "AGENTS.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +69,7 @@ func TestEveryMachineIsGivenTheSameContext(t *testing.T) {
 // that exists keeps its tasks. That rule is its instructions', on every line.
 func TestPlannersKeepAnExistingPlansTasks(t *testing.T) {
 	for _, line := range []string{"careful", "quick"} {
-		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tetris", "tetris-005", ".assembly-lines", line, "machines", "planner", "AGENTS.md"))
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "tetris", "tetris-007", ".assembly-lines", line, "machines", "planner", "AGENTS.md"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +86,7 @@ func TestPlannersKeepAnExistingPlansTasks(t *testing.T) {
 // folders are alike but for the model each names, so each is given the same
 // instructions and the same prompt.
 func TestTheThreeBigBrainsAreAlikeButForTheirModels(t *testing.T) {
-	machines := filepath.Join("..", "..", "..", "tetris", "tetris-005", ".assembly-lines", "three-big-brains", "machines")
+	machines := filepath.Join("..", "..", "..", "tetris", "tetris-007", ".assembly-lines", "three-big-brains", "machines")
 	read := func(reviewer, file string) string {
 		raw, err := os.ReadFile(filepath.Join(machines, reviewer, file))
 		if err != nil {
@@ -98,13 +100,13 @@ func TestTheThreeBigBrainsAreAlikeButForTheirModels(t *testing.T) {
 		if read(reviewer, "AGENTS.md") != instructions {
 			t.Errorf("%s's AGENTS.md is not reviewer_1's", reviewer)
 		}
-		m, err := loadMachine(reviewer, filepath.Join(machines, reviewer))
+		m, err := machine.Load(reviewer, filepath.Join(machines, reviewer))
 		if err != nil {
 			t.Fatal(err)
 		}
-		models[m.model] = true
-		if m.harness != "pi" {
-			t.Errorf("%s runs on %s", reviewer, m.harness)
+		models[m.Model] = true
+		if m.Harness != "pi-rpc-acp" {
+			t.Errorf("%s runs on %s", reviewer, m.Harness)
 		}
 	}
 	if len(models) != 3 {
