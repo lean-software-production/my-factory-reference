@@ -1,0 +1,9 @@
+{
+  "name": "terminal-tetris",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A Tetris game for the terminal",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
