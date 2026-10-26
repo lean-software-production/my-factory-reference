@@ -26,10 +26,24 @@ function canPlace(piece, x, y, cells = piece.cells) {
   });
 }
 
+function clearLines() {
+  let cleared = 0;
+  for (let y = HEIGHT - 1; y >= 0; y--) {
+    if (board[y].every(Boolean)) {
+      board.splice(y, 1);
+      board.unshift(Array(WIDTH).fill(null));
+      cleared++;
+      y++; // Check this row again: the rows above have shifted down.
+    }
+  }
+  score += [0, 100, 300, 500, 800][cleared] || 0;
+}
+
 function lockPiece() {
   for (const [dx, dy] of active.cells) {
     board[active.y + dy][active.x + dx] = active.kind;
   }
+  clearLines();
   active = null; // Spawning the next piece is added in the next gameplay step.
   clearInterval(gravity);
 }
