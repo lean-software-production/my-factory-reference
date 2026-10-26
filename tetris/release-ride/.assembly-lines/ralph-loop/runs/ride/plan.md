@@ -6,5 +6,5 @@
 - [x] Clear completed rows after locking a piece and update the visible score.
 - [x] Add a hard drop control that immediately locks the piece and spawns the next one.
 - [x] Detect blocked spawns and show a game-over message within the 24-row display.
-- [ ] Add restart and quit controls, and restore terminal input/display state on exit.
+- [x] Add restart and quit controls, and restore terminal input/display state on exit.
 - [ ] Add automated checks for board rules and display height, and document the controls and how to run the game.
