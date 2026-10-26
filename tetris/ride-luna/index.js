@@ -43,6 +43,23 @@ function movePiece(board, piece, dx, dy) {
   return true;
 }
 
+function rotatePiece(board, piece) {
+  const rotated = piece.shape[0].map((_, x) =>
+    piece.shape.map((row) => row[x]).reverse());
+  // Try the rotation in place, then small horizontal/vertical kicks near walls
+  // and the floor. A failed rotation leaves the piece untouched.
+  const kicks = [[0, 0], [-1, 0], [1, 0], [-2, 0], [2, 0], [0, -1], [-1, -1], [1, -1]];
+  for (const [dx, dy] of kicks) {
+    if (canPlace(board, { ...piece, shape: rotated }, piece.x + dx, piece.y + dy)) {
+      piece.shape = rotated;
+      piece.x += dx;
+      piece.y += dy;
+      return true;
+    }
+  }
+  return false;
+}
+
 function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null) {
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
   const cells = board.map((row) => row.slice());
@@ -79,6 +96,11 @@ function start() {
       cleanup();
       process.exit(0);
     }
+    if (key === 'w' || key === '\u001b[A' || key === ' ') {
+      rotatePiece(board, piece);
+      render(board, piece);
+      return;
+    }
     const movement = { '\u001b[D': [-1, 0], a: [-1, 0], '\u001b[C': [1, 0], d: [1, 0], '\u001b[B': [0, 1], s: [0, 1] }[key];
     if (movement) {
       movePiece(board, piece, movement[0], movement[1]);
@@ -89,4 +111,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, canPlace, movePiece, render, start };
+module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, canPlace, movePiece, rotatePiece, render, start };
