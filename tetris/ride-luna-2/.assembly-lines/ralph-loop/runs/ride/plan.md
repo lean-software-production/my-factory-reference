@@ -8,4 +8,4 @@
 - [x] Detect top-out and show a game-over screen with a restart option
 - [x] Add keyboard controls for movement, rotation, pause, restart, and quit
 - [x] Keep the complete display within 24 terminal rows and restore terminal state cleanly on exit
-- [ ] Add automated checks for core game rules and document how to play
+- [x] Add automated checks for core game rules and document how to play
