@@ -4,34 +4,22 @@
 const WIDTH = 10;
 const HEIGHT = 20;
 
-function initialScreen() {
-  const rows = [
-    '┌────────────┐',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '│            │',
-    '└────────────┘',
-    'Terminal Tetris',
-    'Press any key to start · Q to quit',
-  ];
+function emptyBoard() {
+  return Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(0));
+}
+
+function renderBoard(board = emptyBoard()) {
+  const rows = ['┌' + '─'.repeat(WIDTH * 2) + '┐'];
+  for (let y = 0; y < HEIGHT; y++) {
+    const cells = Array.from({ length: WIDTH }, (_, x) => board[y]?.[x] ? '██' : '  ');
+    rows.push('│' + cells.join('') + '│');
+  }
+  rows.push('└' + '─'.repeat(WIDTH * 2) + '┘');
   return rows.join('\n');
+}
+
+function initialScreen() {
+  return [renderBoard(), 'Terminal Tetris', 'Press any key to start · Q to quit'].join('\n');
 }
 
 function render() {
@@ -55,4 +43,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { WIDTH, HEIGHT, initialScreen };
+module.exports = { WIDTH, HEIGHT, emptyBoard, renderBoard, initialScreen };
