@@ -4,6 +4,7 @@
   "private": true,
   "description": "A Tetris game for the terminal",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   }
 }
