@@ -4,7 +4,7 @@
 - [x] Implement rotation with collision checks and a hard-drop/soft-drop behavior
 - [x] Add automatic piece falling and lock pieces when they land
 - [x] Detect and clear completed rows, then compact the board
-- [ ] Track and display score, cleared lines, and level
+- [x] Track and display score, cleared lines, and level
 - [ ] Detect top-out and show a game-over screen with a restart option
 - [ ] Add keyboard controls for movement, rotation, pause, restart, and quit
 - [ ] Keep the complete display within 24 terminal rows and restore terminal state cleanly on exit
