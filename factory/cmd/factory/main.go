@@ -15,10 +15,12 @@
 //
 // The factory runs as a daemon, one run at a time. Starting a run returns
 // at once; watching it shows what the machines generate and spend, from the
-// run's record; and runs, and the factory, can be stopped:
+// run's record; a machine can be told something while it works; and runs,
+// and the factory, can be stopped:
 //
 //	factory --run <name> --target <folder> [--line <line> --seed <file>] [--attempts <n>]
 //	factory watch <name> --target <folder>
+//	factory say <name> --target <folder> <machine> <message>
 //	factory stop <name> --target <folder>
 //	factory stop
 //	factory status
@@ -46,6 +48,7 @@ func main() {
 func command(args []string) int {
 	commands := map[string]func([]string) error{
 		"watch":  watchCommand,
+		"say":    sayCommand,
 		"stop":   stopCommand,
 		"status": statusCommand,
 		"daemon": daemonCommand,
@@ -117,23 +120,68 @@ func usage(err error) error {
 // runFlags reads the arguments of a command about a run: its name, before
 // or after the flags, and its target.
 func runFlags(name string, args []string) (invocation, error) {
+	i, rest, err := runArgs(name, args)
+	if err == nil && len(rest) > 0 {
+		err = usage(fmt.Errorf("unexpected %q", rest[0]))
+	}
+	return i, err
+}
+
+// runArgs reads the arguments of a command about a run, with the flags
+// anywhere among them: the run's name, the first of the rest, and its
+// target. It returns the arguments after the name. After "--", none is a
+// flag.
+func runArgs(name string, args []string) (invocation, []string, error) {
 	flags := flag.NewFlagSet("factory "+name, flag.ContinueOnError)
 	var i invocation
 	flags.StringVar(&i.target, "target", "", "the folder that holds the run")
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		i.run, args = args[0], args[1:]
-	}
-	if err := flags.Parse(args); err != nil {
-		return i, usage(err)
-	}
-	rest := flags.Args()
-	if i.run == "" && len(rest) > 0 {
-		i.run, rest = rest[0], rest[1:]
+	var rest []string
+	for len(args) > 0 {
+		if !strings.HasPrefix(args[0], "-") || args[0] == "-" {
+			rest, args = append(rest, args[0]), args[1:]
+			continue
+		}
+		if args[0] == "--" {
+			rest = append(rest, args[1:]...)
+			break
+		}
+		if err := flags.Parse(args); err != nil {
+			return i, nil, usage(err)
+		}
+		if parsed := args[:len(args)-flags.NArg()]; parsed[len(parsed)-1] == "--" {
+			rest = append(rest, flags.Args()...)
+			break
+		}
+		args = flags.Args()
 	}
 	if len(rest) > 0 {
-		return i, usage(fmt.Errorf("unexpected %q", rest[0]))
+		i.run, rest = rest[0], rest[1:]
 	}
-	return i.resolved()
+	i, err := i.resolved()
+	return i, rest, err
+}
+
+// sayCommand passes a message to a machine of the run while it works, and
+// returns once the machine has it. It is refused if that machine is not
+// working now.
+func sayCommand(args []string) error {
+	i, rest, err := runArgs("say", args)
+	if err != nil {
+		return err
+	}
+	if len(rest) != 2 {
+		return usage(errors.New("say names the run, the machine and the message: factory say <run> --target <folder> <machine> <message>"))
+	}
+	machine, message := rest[0], rest[1]
+	rep, err := call(request{Op: "say", Run: i.run, Target: i.target, Machine: machine, Message: message}, false)
+	if errors.Is(err, errNotRunning) {
+		return errors.New("refused: nothing is running: the factory is not running")
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Println(rep.Message)
+	return nil
 }
 
 // stopCommand stops the run it names, leaving the factory running, or, if it

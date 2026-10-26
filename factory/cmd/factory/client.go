@@ -25,13 +25,15 @@ import (
 
 // request is what a command asks the daemon.
 type request struct {
-	Op       string   `json:"op"` // start, stop, shutdown or status
+	Op       string   `json:"op"` // start, stop, say, shutdown or status
 	Run      string   `json:"run,omitempty"`
 	Target   string   `json:"target,omitempty"` // an absolute path
 	Line     string   `json:"line,omitempty"`
 	Seed     string   `json:"seed,omitempty"` // an absolute path
 	Attempts int      `json:"attempts,omitempty"`
-	Env      []string `json:"env,omitempty"` // the caller's, for the run's machines
+	Env      []string `json:"env,omitempty"`     // the caller's, for the run's machines
+	Machine  string   `json:"machine,omitempty"` // the machine a message is for
+	Message  string   `json:"message,omitempty"`
 }
 
 // reply is what the daemon answers.

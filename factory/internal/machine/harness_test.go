@@ -47,7 +47,7 @@ func TestUnsignedHarnessFailsFast(t *testing.T) {
 	failed := make(chan error, 1)
 	began := time.Now()
 	go func() {
-		_, err := m.Run(context.Background(), t.TempDir(), "do it", nil, nil)
+		_, err := m.Run(context.Background(), t.TempDir(), "do it", nil, nil, nil)
 		failed <- err
 	}()
 	var err error
@@ -75,7 +75,7 @@ func TestUnsignedHarnessFailsFast(t *testing.T) {
 // saying which machine and harness, and what the harness complained of.
 func TestAHarnessThatSaysNothingFailsFast(t *testing.T) {
 	m := harnessed(t, "planner", acptest.Script("echo 'No API key for provider: openai-codex' >&2"))
-	_, err := m.Run(context.Background(), t.TempDir(), "do it", nil, nil)
+	_, err := m.Run(context.Background(), t.TempDir(), "do it", nil, nil, nil)
 	if err == nil {
 		t.Fatal("a machine that generated nothing did its job")
 	}
@@ -91,7 +91,7 @@ func TestAHarnessThatSaysNothingFailsFast(t *testing.T) {
 func TestAMachineSaysWhatItGeneratesLineByLine(t *testing.T) {
 	m := harnessed(t, "doer", acptest.Script("", "working on it", `{"task": "alpha"}`))
 	var lines []string
-	turn, err := m.Run(context.Background(), t.TempDir(), "do it", nil, func(line string) { lines = append(lines, line) })
+	turn, err := m.Run(context.Background(), t.TempDir(), "do it", nil, func(line string) { lines = append(lines, line) }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestStoppingTheFactoryStopsItsMachine(t *testing.T) {
 			ctx, stop := context.WithCancel(context.Background())
 			done := make(chan error, 1)
 			go func() {
-				_, err := m.Run(ctx, t.TempDir(), "do it", nil, nil)
+				_, err := m.Run(ctx, t.TempDir(), "do it", nil, nil, nil)
 				done <- err
 			}()
 			acptest.WaitForFile(t, filepath.Join(state, "begun"))
@@ -149,7 +149,7 @@ func TestAMachineLeavesNothingRunning(t *testing.T) {
 	var err error
 	go func() {
 		defer close(done)
-		turn, err = m.Run(context.Background(), t.TempDir(), "do it", nil, nil)
+		turn, err = m.Run(context.Background(), t.TempDir(), "do it", nil, nil, nil)
 	}()
 	select {
 	case <-done:

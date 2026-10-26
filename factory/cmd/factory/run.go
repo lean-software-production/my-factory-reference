@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -69,6 +70,15 @@ type run struct {
 	folder   runFolder
 	env      []string // the environment its machines run in
 	record   *record  // what its machines are given, generate and spend
+
+	mu      sync.Mutex
+	working []working // the machines taking a turn now, in the order they began
+}
+
+// working is a machine taking its turn, and how to tell it something.
+type working struct {
+	machine  string
+	steering *machine.Steering
 }
 
 // A task is finished when the line comes back to the planner with the work
@@ -235,10 +245,13 @@ func fileExists(path string) bool {
 // generates and spends goes in the run's record as it happens.
 func (r *run) ask(ctx context.Context, name, prompt string) (string, result, error) {
 	m := r.machines[name]
+	steering := machine.NewSteering()
 	r.record.add(watch.Event{Kind: watch.Start, Machine: name, Prompt: prompt})
+	r.begins(name, steering)
 	turn, err := m.Run(ctx, r.folder.target, prompt, r.env, func(line string) {
 		r.record.add(watch.Event{Kind: watch.Text, Machine: name, Text: line})
-	})
+	}, steering)
+	r.ends(name)
 	if err == nil {
 		r.record.add(watch.Event{Kind: watch.Usage, Machine: name, Provider: m.Provider(), Model: m.Model,
 			InputTokens: turn.Usage.InputTokens, OutputTokens: turn.Usage.OutputTokens})
@@ -254,6 +267,62 @@ func (r *run) ask(ctx context.Context, name, prompt string) (string, result, err
 	r.record.add(watch.Event{Kind: watch.Result, Machine: name, Text: line, Result: res})
 	r.record.add(watch.Event{Kind: watch.End, Machine: name})
 	return line, res, nil
+}
+
+func (r *run) begins(name string, steering *machine.Steering) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.working = append(r.working, working{name, steering})
+}
+
+func (r *run) ends(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.working = slices.DeleteFunc(r.working, func(w working) bool { return w.machine == name })
+}
+
+// tell passes the message to the machine, while it takes its turn, and
+// records that it was told. A machine that is not working now, finished or
+// not yet started, is not told: the message is refused, saying what is
+// working. Nothing is kept for later.
+func (r *run) tell(ctx context.Context, name, message string) error {
+	if _, ok := r.machines[name]; !ok {
+		return fmt.Errorf("refused: the %s line has no machine called %s", r.folder.Line, name)
+	}
+	r.mu.Lock()
+	var (
+		steering *machine.Steering
+		names    []string
+	)
+	for _, w := range r.working {
+		names = append(names, w.machine)
+		if w.machine == name {
+			steering = w.steering
+		}
+	}
+	r.mu.Unlock()
+	if steering == nil {
+		return fmt.Errorf("refused: %s", whatIsRunning(names))
+	}
+	if err := steering.Tell(ctx, message); err != nil {
+		return fmt.Errorf("refused: the %s did not hear it: %v", name, err)
+	}
+	r.record.add(watch.Event{Kind: watch.Told, Machine: name, Text: message})
+	return nil
+}
+
+// whatIsRunning says which machines are running: "nothing is running",
+// "doer is what is running", "reviewer_1, reviewer_2 and reviewer_3 are what
+// is running".
+func whatIsRunning(machines []string) string {
+	switch len(machines) {
+	case 0:
+		return "nothing is running"
+	case 1:
+		return machines[0] + " is what is running"
+	}
+	last := len(machines) - 1
+	return strings.Join(machines[:last], ", ") + " and " + machines[last] + " are what is running"
 }
 
 // lastResult finds the last line of the answer that is a JSON object.

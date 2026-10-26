@@ -45,3 +45,27 @@ run tetris failed: a task hit its limit
 		t.Errorf("watching showed:\n%s\nnot:\n%s", out.String(), want)
 	}
 }
+
+// A message a machine was told while it worked is shown where it was told.
+func TestWatchShowsWhatAMachineWasTold(t *testing.T) {
+	var out strings.Builder
+	w := New(&out, "careful")
+	for _, ev := range []Event{
+		{Kind: Start, Machine: "doer"},
+		{Kind: Text, Machine: "doer", Text: "started"},
+		{Kind: Told, Machine: "doer", Text: "use curses, not print"},
+		{Kind: Text, Machine: "doer", Text: "finished"},
+	} {
+		if err := w.Render(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := `running    doer
+doer       | started
+told       doer: use curses, not print
+doer       | finished
+`
+	if out.String() != want {
+		t.Errorf("watching showed:\n%s\nnot:\n%s", out.String(), want)
+	}
+}

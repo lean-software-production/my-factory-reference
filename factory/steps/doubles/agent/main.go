@@ -460,7 +460,6 @@ func logCall(dir, role, machine, prompt string) (int, bool) {
 		given = instructions + "\n---\n" + prompt
 	}
 	how := signIn()
-	spentIn = len(given)
 	var n int
 	withLock(dir, func() {
 		for _, sub := range []string{"prompts", "signins", "said"} {
@@ -478,7 +477,10 @@ func logCall(dir, role, machine, prompt string) (int, bool) {
 		appendLine(filepath.Join(dir, "pids.log"), strconv.Itoa(os.Getpid()))
 		appendLine(filepath.Join(dir, "calls.log"), fmt.Sprintf("%s %s %s", filepath.Base(os.Args[0]), role, machine))
 	})
-	callNumber = n
+	output.Lock()
+	spentIn += len(given)
+	output.Unlock()
+	numbered(n)
 	return n, how != ""
 }
 

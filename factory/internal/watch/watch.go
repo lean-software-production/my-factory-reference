@@ -30,6 +30,9 @@ const (
 	Usage Kind = "usage"
 	// End is a machine ending its turn, and Error why it failed, if it did.
 	End Kind = "end"
+	// Told is a machine being told something while it took its turn, as
+	// Text.
+	Told Kind = "told"
 )
 
 // The states a run starts and ends in.
@@ -117,6 +120,8 @@ func (wt *Watcher) Render(ev Event) error {
 		return wt.printf("%-*s | %s\n", labelWidth, ev.Machine, ev.Text)
 	case Usage:
 		return wt.spend(ev)
+	case Told:
+		return wt.printf("%-*s %s: %s\n", labelWidth, "told", ev.Machine, ev.Text)
 	}
 	// A result is already shown, as the line of text it is.
 	return nil

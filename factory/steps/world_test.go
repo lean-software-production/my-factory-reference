@@ -89,6 +89,8 @@ type world struct {
 	watching *watcher
 	// The latest run's record, as read.
 	record []recordEvent
+	// The latest words told to a machine while it worked.
+	told string
 
 	// The latest game started in the target.
 	screen string
@@ -426,4 +428,5 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	w.registerFanOutSteps(sc)
 	w.registerDaemonSteps(sc)
 	w.registerWatchSteps(sc)
+	w.registerSteeringSteps(sc)
 }

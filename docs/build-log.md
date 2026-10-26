@@ -1016,3 +1016,214 @@ Like the first, it waits for David's go-ahead to be pushed.
 Default suite 86/86, and `go test -race ./cmd/factory ./internal/...`
 passes. The run path for a harness that is there is unchanged, so the
 real-agent suite was not re-run.
+
+## Homework 008: Steering
+
+- **Adopted:** iteration `008-steering` from the tutorial's `main`, at 01:29.
+- **Red:** with the adopted spec and homework 7's factory, 93 examples ran
+  (the 9 `@real-agent` ones left out): 86 passed and 7 were undefined (1129
+  steps: 1098 passed, 21 undefined, 10 skipped). The 7 are the examples of
+  the new `steering.feature`. The only other changes are `FACTORY.md`'s
+  paragraph on steering and the README. The failures were all in what the
+  README calls new. No step-drift problem in the tutorial and no
+  regression.
+- **The target:** the README's commands name `tetris/tetris-008`, but
+  steering changes nothing in a line, so there is no new copy of the lines
+  in this repository. The suite still copies its lines from `tetris-007`.
+  The README's commands were run in a scratch repository whose
+  `tetris/tetris-008` held copies of `tetris-007`'s lines (below).
+- **What changed in the factory:**
+  - **`bin/factory say <run> --target <folder> <machine> <message>`**
+    (`cmd/factory/main.go`) asks the daemon to pass the message to the
+    machine, and returns once the machine's agent has taken it:
+    `delivered to doer`. The flags can come anywhere among the arguments,
+    and after `--` none is a flag, so a message can begin with `-`
+    (`runArgs`, which `watch` and `stop` now use too).
+  - **A message is for a machine that is working now** (`cmd/factory/run.go`,
+    `daemon.go`). The run keeps which machines are taking a turn, in the
+    order they began. A message for one that isn't, because it has finished
+    or hasn't started, is refused, and nothing is kept for later:
+    `refused: doer is what is running`, `refused: reviewer_1, reviewer_2 and
+    reviewer_3 are what is running`, or `refused: nothing is running`
+    (between machines, after the run, or with no factory running: then
+    `refused: nothing is running: the factory is not running`). A machine
+    the line doesn't have, or a run that isn't the one running, is refused
+    saying so. Refusals exit 1 and, like homework 7's, are printed as
+    `factory: refused: ...`.
+  - **Steering** (`internal/machine/steering.go`). Each turn has a
+    `machine.Steering`, given to `Machine.Run`. Once the prompt is sent,
+    `Tell` sends `_session/steering` in the turn's session, with its
+    `sessionId` and the message as a `prompt` of one text block, and waits
+    (up to 10s) for the agent's answer. `{"outcome": "injected"}` is
+    delivered. Anything else is refused, saying why: `promptRequired`
+    (`noRunningTurn`, as the bridge answers once a turn is over), an error
+    (an agent without the extension answers "Method not found"), or the
+    turn ending before the agent answered. The ACP client now sends under a
+    lock, and the turn, which reads all the agent's messages, passes a
+    steering request's response to the `Tell` waiting for it.
+  - **A message lasts as long as the turn that heard it.** It goes to that
+    turn's session only. The next attempt and every other machine are new
+    sessions, and the factory gives them nothing of it.
+  - **The record** gets a `told` event (the machine and the message) when
+    the agent has taken the message. `watch` shows it as
+    `told       doer: use curses, not print`.
+- **Doubles:** the agent double now goes on answering while it plays a
+  turn. A `_session/steering` request during a turn is heard there and
+  then: it says `heard: <message>`, which goes in `said/<n>.txt` like
+  anything else it says, and answers `injected`. Outside a turn it answers
+  `promptRequired`, as the bridge does. Something heard before the call has
+  its number is kept once it has one (see the mutation checks).
+- **Steps** (`steps/steering_steps_test.go`): "I say ... to the doer" runs
+  `bin/factory say` and keeps what it said; "the doer finishes its
+  attempt" and "the reviewers finish" let the held machines go on. A
+  machine "heard" a message if a call to it said `heard: <message>`, or was
+  given the message in its prompt, so a factory that passed messages on in
+  later prompts would fail too. "Before it said" compares the order of the
+  lines one call said. "The factory has run the run" runs it to the end, as
+  "the factory runs the run" does. "It says that the doer is what is
+  running" and "that nothing is running" read what `say` printed. "It
+  shows that the doer was told" reads the record's `told` event.
+- **Green:** 93 of 93 examples and 1129 steps pass in about 88s, at 01:46.
+- **How the examples went:** one at a time. The first, "The doer is
+  mid-attempt", failed once its steps were defined because the doer heard
+  nothing; it needed the whole of steering (the command, the daemon's side,
+  the ACP request and the double hearing). The other six passed as soon as
+  their steps were defined: they are the same thing seen from other sides.
+  To check those steps can fail, I broke the factory one way at a time and
+  ran `steering.feature` (7 examples):
+  - the message told to every machine running: 1 fails, "Three reviewers at
+    once";
+  - a message to a machine that isn't working delivered anyway (and
+    dropped): 1, "The machine named has not started";
+  - no `told` in the record: 1, "Reading back";
+  - the message kept, and told to every later turn too: 2, "The next
+    attempt has not heard it" and "The validator has not heard it either".
+    This one at first broke nothing: a double told something before its
+    call had its number didn't keep it. The double now keeps it;
+  - the message kept, and given in every later prompt: the same 2;
+  - `delivered` said without waiting for the agent's answer: none, as the
+    double always takes a message. The unit tests below cover it.
+- **Unit tests:** `internal/machine/steering_test.go`: a machine told
+  something while it works is sent `_session/steering` with its session and
+  the words, and `Tell` returns once the agent says `injected`;
+  `promptRequired`, an error, or no answer before the turn ends are each
+  refused, saying why (with `Tell` made to return at once, without the
+  answer, these fail); a machine whose turn is over is told nothing.
+  `internal/watch` checks the `told` line. `cmd/factory/say_test.go` checks
+  the arguments, `--` included (it failed with `--` mishandled).
+- **Concurrency checks:** `go test -race ./cmd/... ./internal/...` passes.
+  `steering`, `monitoring` and `observability` pass with the factory and
+  doubles race-built: 16 of 16, 128s, no data race
+  (`logs/008-race-steering.log`).
+- **No process outlives its example:** after every default and race-built
+  run, `pgrep` found no daemon, `pi-rpc-acp`, `pi` or double left, and no
+  daemon's folder was left in the temporary folder. (That folder is
+  `$TMPDIR`, here `/var/tmp/bb-machines/...`, not `/tmp`. It holds 33
+  daemons' folders from 00:36 to 00:37, before this homework began, with
+  no daemon running for any of them: homework 7's deferred finding that a
+  daemon killed with `kill -9` leaves its folder.)
+- **README commands**, through `bin/factory` from the root of a scratch
+  repository whose `tetris/tetris-008` held copies of `tetris-007`'s
+  `careful` and `quick` lines (with stand-in logins), with the agent double
+  first on the `PATH` as `pi-rpc-acp` and the doer held after saying
+  `started`: the start printed `started run tetris`; `say tetris --target
+  tetris/tetris-008 doer "use curses, not print"` printed `delivered to
+  doer`; `say ... validator "be strict about error handling"` printed
+  `factory: refused: doer is what is running` and exited 1; a machine not
+  on the line, and a `say` with no message, were refused saying so;
+  `watch` showed `doer | heard: use curses, not print` and the `told` line;
+  let go, the run finished, and only the doer's first attempt (alpha) had
+  heard it, not the second (beta) nor the validator; `say` then printed
+  `factory: refused: nothing is running`, and after `stop`, `refused:
+  nothing is running: the factory is not running`. No login was committed.
+- **Steering pi, for real**, through the starter's `pi-rpc-acp` as it is on
+  `main`: in a scratch repository, the `quick` line on a one-task seed that
+  has the doer run `sleep 40` first. 8s into the doer's turn, `say greet
+  --target tetris/tetris-008 doer "Also make a file kiwi.txt in the target
+  that says kiwi, as part of this task."` printed `delivered to doer`, and
+  `say ... planner hello` was refused (`doer is what is running`). The doer
+  answered "Created `greeting.txt` and `kiwi.txt` after running `sleep
+  40`", and its work commit held both files. The run took 72s. The same
+  with the fixed bridge (below) added `mango.txt` the same way.
+- **Time:** about 17 minutes from the fetch to a green suite (01:29 to
+  01:46), then about 25 more for the mutation checks, the race-built run,
+  the starter's bridge, the README commands and steering pi for real, and
+  37 minutes of real-agent suite.
+
+### Real-agent examples
+
+`FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 75m -v`,
+with the pi wrapper first on the `PATH` (for the judge) and the starter's
+`tools/pi-rpc-acp` as it is on `main`: 01:56 to 02:33 (**37m 06s**),
+**9 of 9 pass**. `steering.feature` has no `@real-agent` example; these are
+the earlier homeworks' nine, re-run because the ACP client changed.
+
+- "Reviewers that look at testability" 4m 05s; "Instructions above the
+  target are not the machine's" 4m 38s; "A Tetris with different details"
+  3m 45s; "The assembly line is given a seed and nothing else" 5m 00s; "The
+  plan comes from the seed" 4m 25s; "A validator that looks at
+  testability" 4m 45s; "...at something else" 3m 18s; "The first task's
+  work is untestable" 3m 29s; "A finding on the first task" 3m 40s.
+- **Tokens**, the last total `watch` showed in each example: 53.5k to
+  126.8k, about 750k for the nine (the judge's tokens aren't counted). Log:
+  `logs/008-real-agent.log`.
+- No daemon, `pi-rpc-acp`, `pi` or double was left running after the
+  suite, and no daemon's folder was left.
+
+### Problems found
+
+Two in the starter's `pi-rpc-acp`, none in the tutorial. The bridge does
+support `_session/steering`: given a message while pi works, it passes it
+to pi's `steer` and answers `{"outcome": "injected"}`, and pi takes it in
+before its next model call, whether it is running a tool or writing its
+answer (checked with a scratch ACP client and the real pi: told a codeword
+during a `sleep 8`, pi answered with it; told while writing, it added what
+it was told). Once the turn is over it answers `promptRequired`
+(`noRunningTurn`). But:
+
+- **A message pi refuses is answered "injected", and kills the turn.** The
+  bridge answers before pi has said whether it took the message. When pi
+  refuses it (a steer that is one of pi's extension commands, say
+  `/hello`), pi's refusal, a failed `response`, is taken as the prompt's
+  failure: the client gets `injected` for the message and an error for the
+  prompt, and pi works on unseen. Reproduced with an extension that
+  registers `/hello`. The fix answers the steering request when pi answers
+  its `steer`: `injected` if it took it, an error with pi's reason if not,
+  and only a refused prompt fails the turn. With it, the refused `/hello`
+  gets an error and the turn finishes; a codeword is still heard; a
+  signed-out pi's prompt is still refused with its message.
+- **The answer pi writes after a steer runs on from the one before.** pi
+  writes a new assistant message after taking a steering message, and the
+  bridge passed its text on with nothing between: "...a little
+  longer.PINEAPPLE". The factory reads a machine's result as its last line
+  of JSON, so a result line followed by a steered answer would be a line
+  that isn't JSON. The fix starts a message on a new line when the last
+  one's text didn't end one. Checked with a fake pi writing two messages
+  ("first answer" then "second answer": one line through `main`'s bridge,
+  two through the fixed one) and with the real pi.
+
+Both are committed on a local branch, `pi-rpc-acp-steering-fixes`, from the
+starter's `main` in `/home/ensembleworks-agent/work/starter-fixes`
+(`b827b4d`, `8cfe8f6`). **Not pushed and no PR**: that waits for David's
+go-ahead, like homework 7's `pi-rpc-acp-reports-pi-errors`. The two
+branches change neighbouring lines of `onPiEvent`, so whichever merges
+second needs a small merge. This repository's copy of the bridge is left
+as the starter's `main` has it.
+
+**The factory works with the bridge as it is on `main`**: the default
+suite's doubles answer as the fixed bridge does, and the real steering
+run above used `main`'s bridge. What `main`'s bridge gets wrong shows only
+when pi refuses a message (then the factory says `delivered`, and the
+machine's turn fails with pi's reason) or when a steered answer follows
+a result on the same line (then, unless pi gives its result again, the
+factory can't read it and says so).
+
+Things to note:
+
+- In what `watch` shows, a double's `heard:` line comes before the `told`
+  line, because the factory records `told` once the agent has answered,
+  and the double says what it heard before answering. A real pi shows
+  nothing of hearing; it acts on it.
+- The starter's bridge says in its opening comment that "homework 8's
+  `run_command` tool" doesn't reach pi; its README says homework 9. Left
+  alone.

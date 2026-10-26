@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/lean-software-production/my-factory-reference/factory/internal/watch"
 )
@@ -113,6 +114,8 @@ func (d *daemon) serve(conn net.Conn) {
 		rep = d.start(req)
 	case "stop":
 		rep = d.stopRun(req)
+	case "say":
+		rep = d.say(req)
 	case "shutdown":
 		d.quitter.Do(func() { close(d.quit) })
 		d.stopRide()
@@ -191,6 +194,31 @@ func (d *daemon) stopRun(req request) reply {
 	rd.cancel(errStopped)
 	<-rd.done
 	return reply{OK: true, Message: "stopped run " + rd.name()}
+}
+
+// sayLimit is how long a machine's agent has to say whether it took a
+// message.
+const sayLimit = 10 * time.Second
+
+// say passes the message to the machine the request names, if it is working
+// now in the run that is running, and returns once its agent has taken it.
+// Otherwise the message is refused: nothing is held for later.
+func (d *daemon) say(req request) reply {
+	d.mu.Lock()
+	rd := d.current
+	d.mu.Unlock()
+	if rd == nil {
+		return failure(errors.New("refused: nothing is running"))
+	}
+	if rd.name() != req.Run || rd.target() != req.Target {
+		return failure(fmt.Errorf("refused: the %q run is not running (run %s is, in %s)", req.Run, rd.name(), rd.target()))
+	}
+	ctx, cancel := context.WithTimeout(rd.ctx, sayLimit)
+	defer cancel()
+	if err := rd.run.tell(ctx, req.Machine, req.Message); err != nil {
+		return failure(err)
+	}
+	return reply{OK: true, Message: "delivered to " + req.Machine}
 }
 
 // stopRide stops the run that is running, if any, and waits until it has.

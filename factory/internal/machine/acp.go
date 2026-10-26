@@ -42,7 +42,10 @@ type Turn struct {
 // its call. An agent that gives up before it answers, as one that cannot
 // sign in does, fails the call at once, with what it said on its standard
 // error.
-func (m Machine) Run(ctx context.Context, dir, prompt string, env []string, said func(line string)) (Turn, error) {
+//
+// While the turn runs, the machine can be told something through steering,
+// if there is one.
+func (m Machine) Run(ctx context.Context, dir, prompt string, env []string, said func(line string), steering *Steering) (Turn, error) {
 	complaints, err := os.CreateTemp("", "factory-harness-")
 	if err != nil {
 		return Turn{}, err
@@ -77,9 +80,12 @@ func (m Machine) Run(ctx context.Context, dir, prompt string, env []string, said
 	}()
 	done := make(chan struct{})
 	defer close(done)
-	s := &session{in: stdin, msgs: messages(out, done), transcript: transcript{said: said}}
+	s := &session{in: stdin, msgs: messages(out, done), transcript: transcript{said: said},
+		waiting: map[string]chan message{}, over: make(chan struct{})}
 
-	usage, err := s.converse(ctx, p, dir, prompt)
+	usage, err := s.converse(ctx, p, dir, prompt, steering)
+	steering.end()
+	close(s.over)
 	s.transcript.flush()
 	switch {
 	case ctx.Err() != nil:
@@ -106,12 +112,20 @@ func (m Machine) Run(ctx context.Context, dir, prompt string, env []string, said
 var errGone = errors.New("the agent has gone")
 
 // A session is the factory's side of an ACP conversation with one agent:
-// the requests it sends, and the messages the agent sends back.
+// the requests it sends, and the messages the agent sends back. The turn
+// reads them; a message the machine is told while its turn runs is sent
+// from elsewhere, and waits for its answer until the turn is over.
 type session struct {
 	in         io.Writer
 	msgs       <-chan message
-	next       int // the id of the next request
 	transcript transcript
+
+	// mu is held to send, so that messages go whole, and for the requests'
+	// ids and who awaits their answers.
+	mu      sync.Mutex
+	last    int                     // the id of the latest request
+	waiting map[string]chan message // the requests sent from elsewhere awaiting their answers, by id
+	over    chan struct{}           // closed when the turn is over and no more answers will be read
 }
 
 // message is a JSON-RPC message from the agent: a response to one of the
@@ -129,7 +143,7 @@ type message struct {
 // converse has the agent take the prompt: it is initialized, a session is
 // started in dir, and the prompt is sent in it. It returns what the turn
 // spent.
-func (s *session) converse(ctx context.Context, p *process, dir, prompt string) (Usage, error) {
+func (s *session) converse(ctx context.Context, p *process, dir, prompt string, steering *Steering) (Usage, error) {
 	if _, err := s.call(ctx, p, "initialize", map[string]any{
 		"protocolVersion": 1, "clientCapabilities": map[string]any{},
 	}); err != nil {
@@ -145,11 +159,16 @@ func (s *session) converse(ctx context.Context, p *process, dir, prompt string) 
 	if json.Unmarshal(raw, &started) != nil || started.SessionID == "" {
 		return Usage{}, fmt.Errorf("it started no session: %s", raw)
 	}
-	raw, err = s.call(ctx, p, "session/prompt", map[string]any{
+	id, err := s.request("session/prompt", map[string]any{
 		"sessionId": started.SessionID,
-		"prompt":    []any{map[string]string{"type": "text", "text": prompt}},
+		"prompt":    textPrompt(prompt),
 	})
 	if err != nil {
+		p.waitFor(stopGrace)
+		return Usage{}, errGone
+	}
+	steering.begin(s, started.SessionID)
+	if raw, err = s.await(ctx, p, id); err != nil {
 		return Usage{}, err
 	}
 	var ended struct {
@@ -163,15 +182,33 @@ func (s *session) converse(ctx context.Context, p *process, dir, prompt string) 
 // exited, for what it wrote before it went.
 const drainTime = time.Second
 
+func textPrompt(text string) []any {
+	return []any{map[string]string{"type": "text", "text": text}}
+}
+
 // call sends the request, and reads the agent's messages until its
 // response, which it returns.
 func (s *session) call(ctx context.Context, p *process, method string, params any) (json.RawMessage, error) {
-	s.next++
-	id := strconv.Itoa(s.next)
-	if err := s.send(map[string]any{"jsonrpc": "2.0", "id": s.next, "method": method, "params": params}); err != nil {
+	id, err := s.request(method, params)
+	if err != nil {
 		p.waitFor(stopGrace)
 		return nil, errGone
 	}
+	return s.await(ctx, p, id)
+}
+
+// request sends a request, and returns its id.
+func (s *session) request(method string, params any) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.last++
+	return strconv.Itoa(s.last), s.sendLocked(map[string]any{"jsonrpc": "2.0", "id": s.last, "method": method, "params": params})
+}
+
+// await reads the agent's messages until its response to the request with
+// that id, which it returns. Responses to requests sent from elsewhere are
+// passed to whoever is waiting for them.
+func (s *session) await(ctx context.Context, p *process, id string) (json.RawMessage, error) {
 	var gone <-chan time.Time // after the agent has exited
 	exited := p.exited
 	for {
@@ -191,6 +228,9 @@ func (s *session) call(ctx context.Context, p *process, method string, params an
 					return nil, errors.New(m.Error.Message)
 				}
 				return m.Result, nil
+			}
+			if m.Method == "" && s.answered(m) {
+				continue
 			}
 			if err := s.handle(m); err != nil {
 				return nil, errGone
@@ -225,7 +265,26 @@ func (s *session) handle(m message) error {
 	return nil
 }
 
+// answered passes the response to the request sent from elsewhere that
+// awaits it, if one does.
+func (s *session) answered(m message) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	answer, ok := s.waiting[string(m.ID)]
+	if ok {
+		delete(s.waiting, string(m.ID))
+		answer <- m
+	}
+	return ok
+}
+
 func (s *session) send(msg map[string]any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sendLocked(msg)
+}
+
+func (s *session) sendLocked(msg map[string]any) error {
 	line, err := json.Marshal(msg)
 	if err != nil {
 		return err
