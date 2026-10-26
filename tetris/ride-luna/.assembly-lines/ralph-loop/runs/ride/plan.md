@@ -1,6 +1,6 @@
 - [x] Set up the Node.js project and make `npm start` launch a terminal game
 - [x] Draw a bordered, correctly sized Tetris board in the terminal
-- [ ] Add the seven tetromino shapes and spawn pieces on the board
+- [x] Add the seven tetromino shapes and spawn pieces on the board
 - [ ] Implement left, right, and down movement with collision checks
 - [ ] Implement piece rotation while keeping pieces within valid board positions
 - [ ] Add automatic piece falling and lock pieces when they land
