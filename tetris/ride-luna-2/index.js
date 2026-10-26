@@ -79,10 +79,19 @@ function lockPiece(board, piece) {
   }
 }
 
+function clearCompletedRows(board) {
+  const remaining = board.filter(row => !row.every(Boolean));
+  const cleared = HEIGHT - remaining.length;
+  while (remaining.length < HEIGHT) remaining.unshift(Array(WIDTH).fill(0));
+  board.splice(0, HEIGHT, ...remaining);
+  return cleared;
+}
+
 function tick(state) {
   if (!state.active || state.gameOver) return;
   if (!softDrop(state.board, state.piece)) {
     lockPiece(state.board, state.piece);
+    clearCompletedRows(state.board);
     state.piece = spawnPiece(state.nextType, state.board);
     state.nextType = Object.keys(PIECES)[Math.floor(Math.random() * Object.keys(PIECES).length)];
     if (!state.piece) state.gameOver = true;
@@ -138,4 +147,4 @@ function main() {
 }
 
 if (require.main === module) main();
-module.exports = { WIDTH, HEIGHT, PIECES, emptyBoard, spawnPiece, collides, movePiece, rotatePiece, softDrop, hardDrop, lockPiece, tick, renderBoard, initialScreen };
+module.exports = { WIDTH, HEIGHT, PIECES, emptyBoard, spawnPiece, collides, movePiece, rotatePiece, softDrop, hardDrop, lockPiece, clearCompletedRows, tick, renderBoard, initialScreen };
