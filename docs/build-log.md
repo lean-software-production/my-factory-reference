@@ -1561,3 +1561,20 @@ No `homework-*` tag and not the `2026.10.26` tag were moved, and
   in "Remove the scratch ride targets"; its parent, `45e2cf6`, still holds
   them, with the runs' records the table above is drawn from. The release
   rides' targets, `tetris/release-ride` and (below) `release-ride-2`, stay.
+- **Corrections to earlier sections**, which are left as they were
+  written:
+  - Homework 003 says the recipe's `--no-session` is left out of the
+    factory's call so that pi's sessions stay in the machine's folder.
+    That held until homework 007: from then the machines run through
+    pi-rpc-acp, which always passes `--no-session` to pi, so no session is
+    kept (as 007's "Things to note" says).
+  - "One ride a model" (the ralph-loop ride's choice of model) undercounts.
+    There were six rides, three on gpt-6-sol (`ride-sol`, `ride-sol-2`,
+    `ride-kill-2`) and three on gpt-6-luna (`ride-luna`, `ride-kill`,
+    `ride-luna-2`), across two planner texts (the first, then the one
+    with the check before marking). Still a small sample.
+  - Homeworks 007 and 008 say no process outlives its example. That was
+    so for the suite as it then was; it predates the leak above, which
+    came in with `TestWatchEndedEarlyLeavesNoPinnedLine` in "watch and
+    --version" and is fixed here.
+  - Homework 008's 33 stale daemons' folders were 32.
