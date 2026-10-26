@@ -106,3 +106,60 @@ func lineIn(t *testing.T, graph string, machines ...string) *assemblyLine {
 	}
 	return line
 }
+
+// nextEdge says which edge a result takes, by its place in the line's edges,
+// so a replay can light the very edge a run went along; next is where it leads.
+func TestNextEdgeIsTheIndexOfTheEdgeTaken(t *testing.T) {
+	l, err := parseAssemblyLine([]byte(`digraph assembly_line {
+		start -> plan_gate
+		plan_gate -> doer             [label="pending"]
+		plan_gate -> planner          [label="ready"]
+		plan_gate -> plan_author      [label="not ready"]
+		plan_author -> plan_reviewer_opus
+		plan_reviewer_opus -> plan_synthesiser
+		plan_synthesiser -> plan_author [label="not satisfied"]
+		plan_synthesiser -> doer        [label="satisfied"]
+		planner -> doer        [label="not complete"]
+		planner -> finish      [label="complete"]
+		doer -> validator
+		validator -> doer      [label="retry"]
+		validator -> plan_author [label="replan"]
+		validator -> planner   [label="satisfied"]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	edgeIndex := func(from, to string) int {
+		t.Helper()
+		for i, e := range l.edges {
+			if e.from == from && e.to == to {
+				return i
+			}
+		}
+		t.Fatalf("no edge from %s to %s", from, to)
+		return -1
+	}
+	for _, c := range []struct {
+		from, to, result string
+	}{
+		{"validator", "plan_author", `{"retry": false, "replan": true, "satisfied": false}`},
+		{"plan_gate", "planner", `{"pending": false, "ready": true}`},
+		{"plan_gate", "plan_author", `{"pending": false, "ready": false}`},
+		{"doer", "validator", `{}`},
+	} {
+		_, res := lastResult(c.result)
+		i, err := l.nextEdge(c.from, res)
+		if err != nil || i != edgeIndex(c.from, c.to) {
+			t.Errorf("%s with %s takes edge %d (%v), not %d", c.from, c.result, i, err, edgeIndex(c.from, c.to))
+		}
+		if to, err := l.next(c.from, res); err != nil || to != c.to {
+			t.Errorf("%s with %s goes to %q (%v), not %q", c.from, c.result, to, err, c.to)
+		}
+	}
+
+	_, res := lastResult(`{"pending": false}`)
+	want := `the result of plan_gate has no field "ready", which the assembly line routes on`
+	if _, err := l.nextEdge("plan_gate", res); err == nil || err.Error() != want {
+		t.Errorf("a missing routed field is reported as %v, not %q", err, want)
+	}
+}

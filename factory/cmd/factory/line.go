@@ -274,27 +274,37 @@ func (e edge) condition() (field string, whenFalse bool) {
 }
 
 // next is the node the line goes to from a machine, given its result: the
-// first edge leaving it that the result takes.
+// end of the edge nextEdge picks.
 func (l *assemblyLine) next(from string, res result) (string, error) {
-	for _, e := range l.edges {
+	i, err := l.nextEdge(from, res)
+	if err != nil {
+		return "", err
+	}
+	return l.edges[i].to, nil
+}
+
+// nextEdge is the place in l.edges of the first edge leaving a machine that
+// its result takes.
+func (l *assemblyLine) nextEdge(from string, res result) (int, error) {
+	for i, e := range l.edges {
 		if e.from != from {
 			continue
 		}
 		field, whenFalse := e.condition()
 		if field == "" {
-			return e.to, nil
+			return i, nil
 		}
 		value, ok := res[field]
 		if !ok {
-			return "", fmt.Errorf("the result of %s has no field %q, which the assembly line routes on", from, field)
+			return 0, fmt.Errorf("the result of %s has no field %q, which the assembly line routes on", from, field)
 		}
 		truth, ok := value.(bool)
 		if !ok {
-			return "", fmt.Errorf("the field %q of the result of %s is neither true nor false, which the assembly line routes on", field, from)
+			return 0, fmt.Errorf("the field %q of the result of %s is neither true nor false, which the assembly line routes on", field, from)
 		}
 		if truth != whenFalse {
-			return e.to, nil
+			return i, nil
 		}
 	}
-	return "", fmt.Errorf("no edge leaving %s is taken by its result", from)
+	return 0, fmt.Errorf("no edge leaving %s is taken by its result", from)
 }
