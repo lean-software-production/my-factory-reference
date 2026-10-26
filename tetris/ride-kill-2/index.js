@@ -35,6 +35,17 @@ function canPlace(piece, x, y) {
   }));
 }
 
+function rotatePiece() {
+  if (!active) return;
+  const cells = active.shape.cells;
+  const rotated = cells[0].map((_, x) => cells.map(row => row[x]).reverse());
+  const candidate = { ...active, shape: { ...active.shape, cells: rotated } };
+  if (canPlace(candidate, candidate.x, candidate.y)) {
+    active.shape = candidate.shape;
+    render();
+  }
+}
+
 function lockPiece() {
   active.shape.cells.forEach((row, dy) => row.forEach((filled, dx) => {
     if (filled) board[active.y + dy][active.x + dx] = active.shape.name;
@@ -89,6 +100,10 @@ if (!stdin.isTTY || !stdout.isTTY) {
   stdin.on('keypress', (_, key) => {
     if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
       close();
+      return;
+    }
+    if (key.name === 'up') {
+      rotatePiece();
       return;
     }
     const dx = key.name === 'left' ? -1 : key.name === 'right' ? 1 : 0;
