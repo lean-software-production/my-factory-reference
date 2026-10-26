@@ -1603,3 +1603,86 @@ No `homework-*` tag and not the `2026.10.26` tag were moved, and
   - **Cleanup**: `factory stop` stopped the daemon; `pgrep` found no
     daemon, `pi-rpc-acp`, `pi` or harness after. The line's copy in the
     target is committed, as `release-ride`'s is (the logins are ignored).
+
+## Beyond the homeworks: a status bar for watch
+
+Not a homework: no iteration was fetched, and `factory/ITERATION` and
+`factory/spec/` are as homework 8 left them. The pinned line of `watch`
+(`▶ <line>  task 5/12  ██████░░░░░░░░░░  6m 40s`) is replaced, on a
+terminal, by a three-row status bar. The plain output, which the feature
+suite reads, has no bar and is as it was, minus one line (see below).
+
+- **The three rows**, pinned at the bottom while the log lines scroll above
+  them:
+
+      ride on ralph-loop · tetris/release-ride-3
+      start ▸ planner ▸ doer ↺ planner                                   round 2
+      2m 14s · planner 31.0k · doer 58.2k · run 89.2k tokens
+
+  - Row 1 is the run, its line and its target (shown from the folder `watch`
+    is run in when it is in it, and by its whole path otherwise).
+  - Row 2 is the route, with the round right-aligned. A machine running now
+    is in its own colour, reversed; one that has worked in the current
+    round is green; the rest are plain. A round starts when the planner
+    does, and the machines that worked in the last are plain again.
+  - Row 3 is the clock, what each machine that has spent anything has
+    spent (in the order they first spent), and the run's total.
+  - Each row is cut to the terminal's width less one, ending in `…` when it
+    is cut, so none wraps. Writing a log line wipes three rows (the row the
+    cursor is on, then up and wipe, twice) and draws all three again; `Close`,
+    Ctrl-C, a dead daemon and a run that ended all wipe the whole bar, and a
+    run that ended still prints `run … finished (…)`.
+- **The route comes from the line's graph.** `watch` finds the run's line
+  from the folder that holds its `run.json` (`findRun`, as before), reads
+  that line's `assembly-line.dot` with the factory's own `parseAssemblyLine`
+  (`line.go`: there is no second parser), and `cmd/factory/route.go` walks
+  it from `start`. The `watch` package is given a `watch.Route`, the steps,
+  the machines edges go back to and the planner's name, and knows nothing
+  of graphs.
+  - A fan out is shown in brackets, `[reviewer_1 reviewer_2 reviewer_3]`,
+    in the order the edges are written, and the walk goes on from where
+    the branches meet.
+  - An edge back to a machine already written is not followed. They are
+    listed once after `↺`, in the order met. `finish`, and the edges into
+    it, are never shown.
+  - The real lines: `ralph-loop` and `quick`, `start ▸ planner ▸ doer ↺
+    planner`; `careful`, `start ▸ planner ▸ doer ▸ validator ↺ doer,
+    planner` (the validator's retry edge to the doer, then the planner's
+    own); `three-big-brains`, `start ▸ planner ▸ doer ▸ [reviewer_1
+    reviewer_2 reviewer_3] ▸ synthesiser ↺ doer, planner`.
+  - A graph the walk can't cover (some machine is never reached by it, or
+    branches don't meet) gives its machines in the order they first appear
+    in the graph; one that can't be read gives no route. `watch` carries
+    on either way.
+- **Round** is how many `start` events the planner has had in the record,
+  replayed from its first line, so a `watch` that attaches late counts the
+  rounds that went by. The planner is the machine with an edge to
+  `finish`, from the graph (`(*assemblyLine).planner`), never by name:
+  renamed `lead`, it still counts. Machines running are those with a `start`
+  and no `end`, so ones already running when `watch` attaches are shown.
+- **The progress convention is removed.** The planner of `ralph-loop` no
+  longer reports `{"progress": {"done": n, "total": n}}`: that line, its
+  example and the sentence about counting tasks are gone from its
+  `AGENTS.md` (every other instruction stays; the example result is now
+  `{"complete": false}`). `watch` no longer parses a `progress` field, the
+  task bar and `progress.go` are gone, and so are the "progress" line in
+  plain mode and the tests for odd progress values (`TestProgressBarToleratesBadValues`,
+  `TestProgressIsClamped`, `TestProgressBarCounts`). The reason: `watch`
+  should depend on nothing in the plan or in any machine's prompt. A bar of
+  tasks needed the planner to count them, in a format the factory never
+  reads; the route, the round and the spending all come from the graph and
+  the record, which the factory owns. A result that still carries a
+  `progress` field is ignored. (The earlier sections of this log, and the
+  design and plan under `docs/superpowers/`, describe the convention as it
+  was.)
+- **Tests**: `internal/watch/bar_test.go` draws the output on a small
+  terminal model (text, `\r`, `\n`, wipe a row, up a row) and reads the
+  bar off it: the three rows, the round (0, 3, late attach, a renamed
+  planner), running and worked machines in a fan out, widths of 120, 80,
+  40 and less, `Close`, the end of a run, the clock, plain output and
+  machine text. `cmd/factory/route_test.go` walks the real graphs.
+  `TestWatchEndedEarlyLeavesNoPinnedLine` (a pty) now checks the three
+  rows are shown and wiped, and has a third case, the run ending.
+- **A limit worth knowing**: the route of `three-big-brains` and its round
+  need a terminal 99 columns wide, so on an 80-column one row 2 is cut before the
+  round shows (`… ↺ do…`). `ralph-loop` and `quick` fit in 80.
