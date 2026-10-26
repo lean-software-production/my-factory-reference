@@ -1,4 +1,5 @@
 // Terminal rendering, piece spawning, and gravity.
+const readline = require('node:readline');
 const { stdin, stdout } = process;
 const WIDTH = 10;
 const HEIGHT = 20;
@@ -82,10 +83,19 @@ if (!stdin.isTTY || !stdout.isTTY) {
     process.exit(0);
   };
 
+  readline.emitKeypressEvents(stdin);
   stdin.setRawMode(true);
   stdin.resume();
-  stdin.on('data', (input) => {
-    if (input.includes(0x71) || input.includes(0x03)) close(); // q or Ctrl-C
+  stdin.on('keypress', (_, key) => {
+    if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+      close();
+      return;
+    }
+    const dx = key.name === 'left' ? -1 : key.name === 'right' ? 1 : 0;
+    if (dx && active && canPlace(active, active.x + dx, active.y)) {
+      active.x += dx;
+      render();
+    }
   });
   process.on('SIGINT', close);
   process.on('SIGTERM', close);
