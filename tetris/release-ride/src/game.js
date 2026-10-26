@@ -18,6 +18,28 @@ function canPlace(board, piece) {
   });
 }
 
+function move(game, dx, dy) {
+  if (game.gameOver || !game.piece) return false;
+  const next = { ...game.piece, x: game.piece.x + dx, y: game.piece.y + dy };
+  if (!canPlace(game.board, next)) return false;
+  game.piece = next;
+  return true;
+}
+
+function rotate(game) {
+  if (game.gameOver || !game.piece) return false;
+  // Rotate clockwise within the piece's spawn area (3×3, or 4×4 for I).
+  if (game.piece.type === 'O') return true;
+  const size = game.piece.type === 'I' ? 4 : 3;
+  const next = {
+    ...game.piece,
+    cells: game.piece.cells.map(([x, y]) => [size - 1 - y, x]),
+  };
+  if (!canPlace(game.board, next)) return false;
+  game.piece = next;
+  return true;
+}
+
 function tick(game, random = Math.random) {
   if (game.gameOver) return;
   const next = { ...game.piece, y: game.piece.y + 1 };
@@ -37,4 +59,4 @@ function tick(game, random = Math.random) {
   }
 }
 
-module.exports = { createGame, canPlace, tick };
+module.exports = { createGame, canPlace, move, rotate, tick };
