@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"math"
 	"os"
@@ -29,28 +28,11 @@ var realRuns = []struct{ record, graph string }{
 	{"../../../tetris/release-ride-3/.assembly-lines/ralph-loop/runs/ride/record.jsonl", "../../../tetris/release-ride-3/.assembly-lines/ralph-loop/assembly-line.dot"},
 }
 
-// eventsIn reads a run's record, one event a line.
+// eventsIn reads a run's record with the factory's own reader.
 func eventsIn(t *testing.T, path string) []watch.Event {
 	t.Helper()
-	file, err := os.Open(path)
+	events, err := readRecord(path)
 	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	var events []watch.Event
-	lines := bufio.NewScanner(file)
-	lines.Buffer(nil, 16<<20)
-	for lines.Scan() {
-		if strings.TrimSpace(lines.Text()) == "" {
-			continue
-		}
-		var ev watch.Event
-		if err := json.Unmarshal(lines.Bytes(), &ev); err != nil {
-			t.Fatalf("%s: %v", path, err)
-		}
-		events = append(events, ev)
-	}
-	if err := lines.Err(); err != nil {
 		t.Fatal(err)
 	}
 	return events

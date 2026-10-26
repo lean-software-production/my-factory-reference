@@ -52,11 +52,12 @@ func command(args []string) int {
 		return 0
 	}
 	commands := map[string]func([]string) error{
-		"watch":  watchCommand,
-		"say":    sayCommand,
-		"stop":   stopCommand,
-		"status": statusCommand,
-		"daemon": daemonCommand,
+		"watch":         watchCommand,
+		"say":           sayCommand,
+		"stop":          stopCommand,
+		"status":        statusCommand,
+		"daemon":        daemonCommand,
+		"visualise-run": visualiseCommand,
 	}
 	run := startCommand
 	if len(args) > 0 {

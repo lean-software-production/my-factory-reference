@@ -1,0 +1,211 @@
+/* Sketchbook kit: tokens + reusable chunks. Spec: README.md. Also include sketchbook.js (wobble filters). */
+@font-face { font-family: "Luckiest Guy"; src: url("fonts/luckiest-guy.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Patrick Hand"; src: url("fonts/patrick-hand.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Patrick Hand SC"; src: url("fonts/patrick-hand-sc.ttf") format("truetype"); font-display: swap; }
+
+/* Palette and fonts. The roles below point at them. */
+:root {
+  --sk-mustard: #EEA306;
+  --sk-teal: #039695;
+  --sk-forest: #4A7D4B;
+  --sk-coral: #F76C37;
+  --sk-blue: #1F78A8;
+  --sk-slate: #36545C;
+  --sk-rust: #D6631C;
+  --sk-deep-teal: #094854;
+  --sk-highlighter: #FFEEB8;
+  --sk-paper: #FCF9F3;
+  --sk-ribbon: #FAEED3;
+  --sk-bubble: #EEF4F5;
+  --sk-ink: #2A2724;
+  --sk-ink-title: #1B1B1B;
+  --sk-body-text: #3A3631;
+  --sk-font-title: 'Luckiest Guy', 'Patrick Hand SC', cursive;
+  --sk-font-label: 'Patrick Hand SC', 'Patrick Hand', cursive;
+  --sk-font-body: 'Patrick Hand', 'Comic Sans MS', cursive;
+  --sk-line-thin: 3px;
+  --sk-line-chunky: 5px;
+}
+
+/* Roles: what the pieces paint with. */
+:root {
+  --sk-page: var(--sk-paper);
+  --sk-text: var(--sk-body-text);
+  --sk-title-text: var(--sk-ink-title);
+  --sk-line: var(--sk-ink);
+  --sk-heading: var(--sk-deep-teal);
+  --sk-on-heading: var(--sk-paper);
+  --sk-connector: var(--sk-slate);
+  --sk-loop: var(--sk-blue);
+  --sk-bubble-fill: var(--sk-bubble);
+  --sk-swash: var(--sk-highlighter);
+  --sk-track: color-mix(in oklab, var(--sk-ink) 12%, var(--sk-paper));
+  --sk-mustard-text: color-mix(in oklch, var(--sk-mustard) 55%, var(--sk-ink));
+  --sk-teal-text: color-mix(in oklch, var(--sk-teal) 70%, var(--sk-ink));
+  --sk-forest-text: color-mix(in oklch, var(--sk-forest) 85%, var(--sk-ink));
+  --sk-coral-text: color-mix(in oklch, var(--sk-coral) 55%, var(--sk-ink));
+  --sk-blue-text: color-mix(in oklch, var(--sk-blue) 85%, var(--sk-ink));
+  --sk-rust-text: color-mix(in oklch, var(--sk-rust) 70%, var(--sk-ink));
+  --sk-deep-teal-text: var(--sk-deep-teal);
+  --sk-accent: var(--sk-teal); --sk-accent-text: var(--sk-teal-text); --sk-on-accent: var(--sk-ink-title);
+}
+
+/* ---------- colour modifiers: add to any chunk that uses an accent ----------
+   Each sets the accent (outlines, badges, washes), a version of it that reads as text,
+   and the numeral colour for a badge filled with it. */
+.sk-mustard { --sk-accent: var(--sk-mustard); --sk-accent-text: var(--sk-mustard-text); --sk-on-accent: var(--sk-ink-title); }
+.sk-teal { --sk-accent: var(--sk-teal); --sk-accent-text: var(--sk-teal-text); --sk-on-accent: var(--sk-ink-title); }
+.sk-forest { --sk-accent: var(--sk-forest); --sk-accent-text: var(--sk-forest-text); --sk-on-accent: #fff; }
+.sk-coral { --sk-accent: var(--sk-coral); --sk-accent-text: var(--sk-coral-text); --sk-on-accent: var(--sk-ink-title); }
+.sk-blue { --sk-accent: var(--sk-blue); --sk-accent-text: var(--sk-blue-text); --sk-on-accent: #fff; }
+.sk-rust { --sk-accent: var(--sk-rust); --sk-accent-text: var(--sk-rust-text); --sk-on-accent: var(--sk-ink-title); }
+.sk-deep-teal { --sk-accent: var(--sk-deep-teal); --sk-accent-text: var(--sk-deep-teal-text); --sk-on-accent: #fff; }
+
+/* ---------- paper: a 16:9 slide, or any paper-backed block ---------- */
+.sk-paper {
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22300%22%20height%3D%22300%22%3E%3Cfilter%20id%3D%22g%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%222%22%20seed%3D%222%22%2F%3E%3CfeColorMatrix%20values%3D%220%200%200%200%200.45%20%200%200%200%200%200.38%20%200%200%200%200%200.28%20%200%200%200%200.05%200%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22300%22%20height%3D%22300%22%20filter%3D%22url%28%23g%29%22%2F%3E%3C%2Fsvg%3E"), var(--sk-page);
+  color: var(--sk-text);
+  font-family: var(--sk-font-body);
+}
+.sk-slide {
+  aspect-ratio: 16 / 9; width: 100%; box-sizing: border-box; overflow: hidden;
+  container-type: inline-size; border-radius: 6px;
+}
+/* put everything inside .sk-slide-body: it scales with the slide's width, not the window's */
+.sk-slide-body {
+  height: 100%; box-sizing: border-box; padding: 3cqw 3.5cqw;
+  font-size: 1.6cqw; display: flex; flex-direction: column;
+}
+
+/* ---------- title on a highlighter swash, optional burst ticks ---------- */
+.sk-title {
+  font-family: var(--sk-font-title); font-weight: 400; color: var(--sk-title-text);
+  text-transform: uppercase; letter-spacing: .02em; line-height: 1.25;
+  font-size: 3.4em; margin: 0; text-align: center;
+}
+.sk-burst { position: relative; display: inline-block; padding: 0 1.2em; }
+.sk-burst::before, .sk-burst::after {
+  content: ""; position: absolute; top: 50%; width: .9em; height: 1.5em; transform: translateY(-50%);
+  background-color: var(--sk-title-text);
+}
+.sk-burst::before { left: 0; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%2280%22%20height%3D%22120%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.035%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%223.5%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20filter%3D%22url%28%23f%29%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%20stroke-linecap%3D%22round%22%3E%3Cline%20x1%3D%2214%22%20y1%3D%2214%22%20x2%3D%2246%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%226%22%20y1%3D%2252%22%20x2%3D%2250%22%20y2%3D%2254%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2292%22%20x2%3D%2246%22%20y2%3D%2274%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%2280%22%20height%3D%22120%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.035%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%223.5%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20filter%3D%22url%28%23f%29%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%20stroke-linecap%3D%22round%22%3E%3Cline%20x1%3D%2214%22%20y1%3D%2214%22%20x2%3D%2246%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%226%22%20y1%3D%2252%22%20x2%3D%2250%22%20y2%3D%2254%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2292%22%20x2%3D%2246%22%20y2%3D%2274%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") center / contain no-repeat; }
+.sk-burst::after  { right: 0; -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%2280%22%20height%3D%22120%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.035%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%223.5%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20transform%3D%22translate%2860%200%29%20scale%28-1%201%29%22%3E%3Cg%20filter%3D%22url%28%23f%29%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%20stroke-linecap%3D%22round%22%3E%3Cline%20x1%3D%2214%22%20y1%3D%2214%22%20x2%3D%2246%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%226%22%20y1%3D%2252%22%20x2%3D%2250%22%20y2%3D%2254%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2292%22%20x2%3D%2246%22%20y2%3D%2274%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2060%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%2280%22%20height%3D%22120%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.035%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%223.5%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20transform%3D%22translate%2860%200%29%20scale%28-1%201%29%22%3E%3Cg%20filter%3D%22url%28%23f%29%22%20stroke%3D%22%23000%22%20stroke-width%3D%227%22%20stroke-linecap%3D%22round%22%3E%3Cline%20x1%3D%2214%22%20y1%3D%2214%22%20x2%3D%2246%22%20y2%3D%2234%22%2F%3E%3Cline%20x1%3D%226%22%20y1%3D%2252%22%20x2%3D%2250%22%20y2%3D%2254%22%2F%3E%3Cline%20x1%3D%2214%22%20y1%3D%2292%22%20x2%3D%2246%22%20y2%3D%2274%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E") center / contain no-repeat; }
+
+/* ---------- highlighter swash: in a title, on a phrase, or on a whole row ---------- */
+.sk-hl {
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%20100%22%20preserveAspectRatio%3D%22none%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-20%22%20y%3D%22-20%22%20width%3D%22440%22%20height%3D%22140%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.02%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%227%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cpath%20filter%3D%22url%28%23f%29%22%20fill%3D%22%23FFEEB8%22%20d%3D%22M10%2016%20C%20120%204%2C%20280%206%2C%20392%2014%20L%20394%2084%20C%20280%2096%2C%20120%2094%2C%206%2088%20Z%22%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  padding: .08em .4em 0; margin: 0 -.25em;
+}
+.sk-title .sk-hl { padding: .12em .45em 0; margin: 0; }
+/* .sk-sweep: the swash sweeps in from the left, once. Still for people who ask for less motion. */
+.sk-hl.sk-sweep { background-position: left center; animation: sk-sweep .9s cubic-bezier(.3, .7, .4, 1) .3s both; }
+@keyframes sk-sweep { from { background-size: 0% 100%; } to { background-size: 100% 100%; } }
+@media (prefers-reduced-motion: reduce) { .sk-hl.sk-sweep { animation: none; } }
+
+/* ---------- section heading with a rule either side ---------- */
+.sk-section {
+  display: flex; align-items: center; gap: .6em; margin: .6em 0;
+  font-family: var(--sk-font-label); font-weight: 400; font-size: 2.2em; color: var(--sk-heading); line-height: 1;
+}
+.sk-section::before, .sk-section::after {
+  content: ""; flex: 1; height: .3em; background-color: var(--sk-heading);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%2010%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M2%205%20C%20100%203%2C%20300%207%2C%20398%205%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20vector-effect%3D%22non-scaling-stroke%22%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20400%2010%22%20preserveAspectRatio%3D%22none%22%3E%3Cpath%20d%3D%22M2%205%20C%20100%203%2C%20300%207%2C%20398%205%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20vector-effect%3D%22non-scaling-stroke%22%2F%3E%3C%2Fsvg%3E") center / 100% 100% no-repeat;
+}
+
+/* ---------- numbered step badge + label ---------- */
+.sk-step { display: flex; align-items: center; gap: .45em; }
+.sk-num {
+  position: relative; isolation: isolate; flex: none; display: inline-grid; place-items: center;
+  width: 1.9em; height: 1.9em; font-family: var(--sk-font-title); color: var(--sk-on-accent); font-size: 1.1em; line-height: 1; padding-top: .12em; box-sizing: border-box;
+}
+.sk-num::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--sk-accent); filter: url(#sk-wobble); }
+.sk-label { font-family: var(--sk-font-label); color: var(--sk-accent-text); font-size: 1.5em; line-height: 1.05; text-transform: uppercase; }
+
+/* ---------- panel: wobbly outline in the accent colour ---------- */
+.sk-panel {
+  position: relative; isolation: isolate; padding: 1em 1.1em 1.2em;
+  display: flex; flex-direction: column; gap: .8em;
+}
+.sk-panel::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: .9em;
+  border: var(--sk-line-thin) solid var(--sk-accent); filter: url(#sk-wobble-soft);
+}
+.sk-panel.sk-dashed::before { border-style: dashed; }
+/* .sk-wash: a pale wash of the accent mixed with the page */
+.sk-panel.sk-wash::before { background: color-mix(in oklab, var(--sk-accent) 9%, var(--sk-page)); }
+.sk-panel > img, .sk-panel > .sk-icon { width: 42%; align-self: center; }
+.sk-panel p { margin: 0; font-size: 1.25em; line-height: 1.2; color: var(--sk-text); }
+.sk-panel .sk-em { color: var(--sk-accent-text); }
+
+/* ---------- tick: a hand-drawn tick, sized and coloured like text ---------- */
+.sk-tick {
+  display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; flex: none;
+  color: var(--sk-forest-text); background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%22120%22%20height%3D%22120%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.035%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%223.5%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cpath%20filter%3D%22url%28%23f%29%22%20d%3D%22M12%2058%20C%2022%2061%2C%2031%2070%2C%2039%2084%20C%2050%2058%2C%2066%2034%2C%2089%2013%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2214%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%22120%22%20height%3D%22120%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.035%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%223.5%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cpath%20filter%3D%22url%28%23f%29%22%20d%3D%22M12%2058%20C%2022%2061%2C%2031%2070%2C%2039%2084%20C%2050%2058%2C%2066%2034%2C%2089%2013%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%2214%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+}
+
+/* ---------- buttons: primary (filled) and secondary (outlined) ---------- */
+.sk-btn {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: .4em;
+  border: 0; background: none; padding: .45em 1.15em .38em; margin: 0; cursor: pointer; text-decoration: none;
+  font-family: var(--sk-font-label); font-size: 1.2em; line-height: 1.1; color: var(--sk-on-heading);
+}
+.sk-btn::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: .6em;
+  background: var(--sk-heading); filter: url(#sk-wobble-soft);
+}
+.sk-btn:hover::before { background: color-mix(in oklab, var(--sk-heading) 85%, var(--sk-text)); }
+.sk-btn.sk-secondary { color: var(--sk-text); }
+.sk-btn.sk-secondary::before { background: transparent; border: 2.5px solid var(--sk-line); }
+.sk-btn.sk-secondary:hover::before { background: color-mix(in oklab, var(--sk-line) 8%, transparent); }
+.sk-btn + .sk-btn { margin-left: .6em; }
+.sk-btn:focus-visible { outline: 2.5px dashed var(--sk-heading); outline-offset: 4px; }
+
+/* ---------- progress meter: set --sk-value (0%–100%); the fill takes the accent ---------- */
+.sk-meter { position: relative; isolation: isolate; display: block; height: .6em; min-width: 4em; }
+.sk-meter::before, .sk-meter::after { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: 1em; filter: url(#sk-wobble-line); }
+.sk-meter::before { background: var(--sk-track); }
+.sk-meter::after { right: auto; width: var(--sk-value, 0%); background: var(--sk-accent); }
+
+/* ---------- speech bubble ---------- */
+.sk-bubble {
+  position: relative; isolation: isolate; padding: .8em 1.2em; margin-bottom: 1.2em;
+  font-family: var(--sk-font-body); font-size: 1.6em; line-height: 1.3; color: var(--sk-text);
+}
+.sk-bubble::before, .sk-bubble::after { content: ""; position: absolute; z-index: -1; background: var(--sk-bubble-fill); filter: url(#sk-wobble); }
+.sk-bubble::before { inset: 0; border: 4px solid var(--sk-line); border-radius: 1.1em; }
+.sk-bubble::after {
+  width: 1.1em; height: 1.1em; left: 2em; bottom: -.62em;
+  border-right: 4px solid var(--sk-line); border-bottom: 4px solid var(--sk-line); transform: rotate(45deg) skew(8deg, 8deg);
+}
+.sk-bubble.sk-tail-right::after { left: auto; right: 2em; }
+.sk-bubble .sk-em { color: var(--sk-rust-text); font-weight: 700; }
+
+/* ---------- ribbon banner ---------- */
+.sk-ribbon {
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: .5em;
+  padding: .45em 1.4em .35em; margin: 0 2.4em;
+  font-family: var(--sk-font-body); font-size: 1.6em; color: var(--sk-body-text);
+}
+.sk-ribbon::before {
+  content: ""; position: absolute; inset: 0; z-index: -1;
+  background: var(--sk-ribbon); border: 2.5px solid var(--sk-ink); filter: url(#sk-wobble-soft);
+}
+.sk-ribbon::after {
+  content: ""; position: absolute; inset: .45em -2.2em -.45em; z-index: -2;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2092%2092%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%22112%22%20height%3D%22112%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.02%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%226%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cpath%20filter%3D%22url%28%23f%29%22%20d%3D%22M40%2012%20L%203%2040%20L%2040%2066%20L%2024%2082%20L%2090%2082%20L%2090%2012%20Z%22%20fill%3D%22%23F1DAB0%22%20stroke%3D%22%232A2724%22%20stroke-width%3D%222.5%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E") left center / auto 100% no-repeat, url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2092%2092%22%3E%3Cdefs%3E%3Cfilter%20id%3D%22f%22%20filterUnits%3D%22userSpaceOnUse%22%20x%3D%22-10%22%20y%3D%22-10%22%20width%3D%22112%22%20height%3D%22112%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.02%22%20numOctaves%3D%222%22%20seed%3D%223%22%2F%3E%3CfeDisplacementMap%20in%3D%22SourceGraphic%22%20scale%3D%226%22%2F%3E%3C%2Ffilter%3E%3C%2Fdefs%3E%3Cg%20transform%3D%22translate%2892%200%29%20scale%28-1%201%29%22%3E%3Cpath%20filter%3D%22url%28%23f%29%22%20d%3D%22M40%2012%20L%203%2040%20L%2040%2066%20L%2024%2082%20L%2090%2082%20L%2090%2012%20Z%22%20fill%3D%22%23F1DAB0%22%20stroke%3D%22%232A2724%22%20stroke-width%3D%222.5%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") right center / auto 100% no-repeat;
+}
+.sk-ribbon .sk-kicker { font-family: var(--sk-font-label); color: var(--sk-rust-text); }
+.sk-ribbon img { height: 1.4em; }
+
+/* ---------- step row: equal-width panels with arrows between ---------- */
+.sk-row { display: flex; align-items: stretch; gap: .25em; }
+.sk-row > .sk-panel { flex: 1 1 0; min-width: 0; }
+
+/* ---------- small helpers ---------- */
+.sk-arrow { width: 1.6em; flex: none; align-self: center; }
+.sk-arrow :is(line, path) { stroke: var(--sk-connector); }
+.sk-loop { display: block; width: 100%; height: auto; }
+.sk-loop path { stroke: var(--sk-loop); }
+.sk-icon { display: block; }
