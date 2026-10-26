@@ -1,4 +1,33 @@
-// Terminal lifecycle for the game. The board and gameplay will be added here.
+// Terminal lifecycle and board display. Gameplay will be added here.
+const WIDTH = 10;
+const HEIGHT = 20;
+const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(null));
+let score = 0;
+
+function render() {
+  // Twenty play rows plus a top and bottom border: 22 terminal rows total.
+  const panel = [
+    'TETRIS',
+    '',
+    `Score: ${score}`,
+    '',
+    'Controls',
+    '← →  Move',
+    '↑    Rotate',
+    '↓    Soft drop',
+    'Space Hard drop',
+    'Q    Quit',
+  ];
+  const lines = [`┌${'─'.repeat(WIDTH * 2)}┐`];
+  for (let y = 0; y < HEIGHT; y++) {
+    lines.push(`│${board[y].map(cell => cell ? '██' : '  ').join('')}│`);
+  }
+  lines.push(`└${'─'.repeat(WIDTH * 2)}┘`);
+  for (let y = 0; y < lines.length; y++) {
+    if (panel[y]) lines[y] += `  ${panel[y]}`;
+  }
+  stdout.write('\x1b[H' + lines.join('\r\n'));
+}
 const stdin = process.stdin;
 const stdout = process.stdout;
 
@@ -34,4 +63,4 @@ stdin.on('data', (key) => {
 });
 
 stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H');
-stdout.write('Tetris\r\nPress q or Ctrl-C to quit.');
+render();
