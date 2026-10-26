@@ -1683,6 +1683,12 @@ suite reads, has no bar and is as it was, minus one line (see below).
   machine text. `cmd/factory/route_test.go` walks the real graphs.
   `TestWatchEndedEarlyLeavesNoPinnedLine` (a pty) now checks the three
   rows are shown and wiped, and has a third case, the run ending.
-- **A limit worth knowing**: the route of `three-big-brains` and its round
-  need a terminal 99 columns wide, so on an 80-column one row 2 is cut before the
-  round shows (`… ↺ do…`). `ralph-loop` and `quick` fit in 80.
+- **Narrow terminals keep the round.** Row 2 is the one row that changes
+  as the run goes, so a route too long for the width is cut, not the round:
+  first the `↺ …` tail is dropped; if that is not enough the route is cut
+  to leave room for `round N`, ending in `…`, and `round N` stays
+  right-aligned. Only a width too small for the round and a little route
+  (under 10 columns) cuts the row as it stands. `three-big-brains` needs
+  99 columns for the whole row; at 80 it reads `start ▸ planner ▸ doer ▸
+  [reviewer_1 reviewer_2 reviewer_3] ▸ synthes…  round 1`. Rows 1 and 3
+  are cut with `…` at the end.

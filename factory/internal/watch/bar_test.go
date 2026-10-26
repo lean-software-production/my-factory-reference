@@ -17,10 +17,15 @@ import (
 type screen struct {
 	rows []string
 	row  int
+	cols int // how wide the terminal is, where text wraps; 0 for no wrapping
 }
 
-func screenOf(s string) screen {
-	sc := screen{rows: []string{""}}
+func screenOf(s string) screen { return screenOfWidth(s, 0) }
+
+// screenOfWidth is the screen of a terminal cols wide, where text that
+// reaches the last column goes on on the next row.
+func screenOfWidth(s string, cols int) screen {
+	sc := screen{rows: []string{""}, cols: cols}
 	for i := 0; i < len(s); {
 		switch {
 		case strings.HasPrefix(s[i:], "\x1b[2K"):
@@ -43,6 +48,12 @@ func screenOf(s string) screen {
 			i++
 		default:
 			_, n := utf8.DecodeRuneInString(s[i:])
+			if sc.cols > 0 && utf8.RuneCountInString(plain(sc.rows[sc.row])) >= sc.cols {
+				sc.row++
+				for len(sc.rows) <= sc.row {
+					sc.rows = append(sc.rows, "")
+				}
+			}
 			sc.rows[sc.row] += s[i : i+n]
 			i += n
 		}
@@ -314,39 +325,100 @@ func TestRoundCountsThePlannerWhateverItIsCalled(t *testing.T) {
 }
 
 // Status rows are cut to the terminal's width less one, ending in an
-// ellipsis, so that nothing wraps.
+// ellipsis, so that nothing wraps. The route row keeps its round: the
+// route is cut, not the round.
 func TestStatusRowsAreCutToTheTerminal(t *testing.T) {
-	for _, cols := range []int{120, 80, 40, 20, 8, 2, 1} {
+	bar := func(cols int) []string {
+		var out bytes.Buffer
+		wt := barWatcher(&out, "three-big-brains", brains())
+		wt.cols = func() int { return cols }
+		render(t, wt,
+			at(t0, 0, Event{Kind: Run, Run: "ride", State: Started}),
+			at(t0, 1, Event{Kind: Start, Machine: "planner"}),
+			at(t0, 2, Event{Kind: Usage, Machine: "planner", Provider: "o", InputTokens: 31000}),
+			at(t0, 3, Event{Kind: Usage, Machine: "reviewer_1", Provider: "o", InputTokens: 31000}),
+			at(t0, 4, Event{Kind: Usage, Machine: "reviewer_2", Provider: "o", InputTokens: 31000}),
+			at(t0, 5, Event{Kind: Text, Machine: "planner", Text: "a line of text"}),
+		)
+		rows, _ := screenOf(out.String()).bar(t)
+		return rows
+	}
+	whole := bar(1000) // the rows as they are when nothing is cut
+	if strings.Contains(strings.Join(whole, ""), "…") {
+		t.Fatalf("rows were cut at 1000 columns:\n%q", whole)
+	}
+	round := "round 1"
+	natural := []int{utf8.RuneCountInString(whole[0]), utf8.RuneCountInString(brains().String()) + 2 + len(round), utf8.RuneCountInString(whole[2])}
+	for _, cols := range []int{120, 100, 99, 98, 80, 60, 40, 20, 12, 11, 10, 8, 2, 1} {
 		t.Run(fmt.Sprint(cols), func(t *testing.T) {
-			var out bytes.Buffer
-			wt := barWatcher(&out, "three-big-brains", brains())
-			wt.cols = func() int { return cols }
-			render(t, wt,
-				at(t0, 0, Event{Kind: Run, Run: "ride", State: Started}),
-				at(t0, 1, Event{Kind: Start, Machine: "planner"}),
-				at(t0, 2, Event{Kind: Usage, Machine: "planner", Provider: "o", InputTokens: 31000}),
-				at(t0, 3, Event{Kind: Usage, Machine: "reviewer_1", Provider: "o", InputTokens: 31000}),
-				at(t0, 4, Event{Kind: Usage, Machine: "reviewer_2", Provider: "o", InputTokens: 31000}),
-				at(t0, 5, Event{Kind: Text, Machine: "planner", Text: "a line of text"}),
-			)
-			rows, _ := screenOf(out.String()).bar(t)
+			rows := bar(cols)
+			room := cols - 1
 			for i, r := range rows {
-				if n := utf8.RuneCountInString(r); n > cols-1 {
-					t.Errorf("row %d is %d wide, over %d:\n%q", i+1, n, cols-1, r)
+				n := utf8.RuneCountInString(r)
+				if n > room {
+					t.Errorf("row %d is %d wide, over %d:\n%q", i+1, n, room, r)
+				}
+				fits := natural[i] <= room
+				switch {
+				case fits && i != 1 && r != whole[i]:
+					t.Errorf("row %d fits and was changed:\n%q", i+1, r)
+				case !fits && room >= 1 && i != 1 && (!strings.HasSuffix(r, "…") || n != room):
+					t.Errorf("row %d is not cut to %d, ending in an ellipsis:\n%q", i+1, room, r)
 				}
 			}
-			// The route of this line is 89 columns long, and the tokens 75.
-			if cols >= 3 && cols <= 80 {
-				for _, i := range []int{1} {
-					if !strings.HasSuffix(rows[i], "…") || utf8.RuneCountInString(rows[i]) != cols-1 {
-						t.Errorf("row %d is not cut to %d, ending in an ellipsis:\n%q", i+1, cols-1, rows[i])
-					}
-				}
+			// The route row keeps its round whenever there is room for it
+			// and a little of the route.
+			if room >= len(round)+3 && !strings.HasSuffix(rows[1], round) {
+				t.Errorf("the round is gone from row 2 at %d columns:\n%q", cols, rows[1])
 			}
-			if cols == 120 && (strings.Contains(strings.Join(rows, ""), "…") || !strings.HasSuffix(rows[1], "round 1")) {
-				t.Errorf("rows that fit were cut:\n%q", rows)
+			if natural[1] <= room && strings.Contains(rows[1], "…") {
+				t.Errorf("row 2 fits and was cut at %d columns:\n%q", cols, rows[1])
+			}
+			// The way back goes first, quietly; after that the route is cut.
+			if wayBack := utf8.RuneCountInString(" ↺ doer, planner"); room >= len(round)+3 && natural[1]-wayBack > room && !strings.Contains(rows[1], "…") {
+				t.Errorf("the route was shortened without an ellipsis:\n%q", rows[1])
+			}
+			if room < len(round)+3 && room >= 1 && natural[1] > room && !strings.HasSuffix(rows[1], "…") {
+				t.Errorf("row 2 is not cut, ending in an ellipsis, at %d columns:\n%q", cols, rows[1])
 			}
 		})
+	}
+	// At 80 columns the route loses its way back before it loses its end.
+	if row := bar(80)[1]; !strings.HasPrefix(row, "start ▸ planner ▸ doer ▸ [reviewer_1 reviewer_2 reviewer_3] ▸ synthes…  ") || !strings.HasSuffix(row, "  round 1") {
+		t.Errorf("row 2 at 80 columns:\n%q", row)
+	}
+	// And where only the way back does not fit, it alone is dropped.
+	if row := bar(90)[1]; row != "start ▸ planner ▸ doer ▸ [reviewer_1 reviewer_2 reviewer_3] ▸ synthesiser"+strings.Repeat(" ", 89-73-7)+"round 1" {
+		t.Errorf("row 2 at 90 columns:\n%q", row)
+	}
+}
+
+// A log line wider than the terminal leaves no row of the bar behind: the
+// bar is wiped from where it was drawn, and drawn again below the line.
+func TestALogLineWiderThanTheTerminalLeavesNoLeftoverRow(t *testing.T) {
+	var out bytes.Buffer
+	wt := barWatcher(&out, "ralph-loop", ralph())
+	wt.cols = func() int { return 40 }
+	render(t, wt,
+		at(t0, 0, Event{Kind: Run, Run: "ride", State: Started}),
+		at(t0, 1, Event{Kind: Start, Machine: "planner"}),
+		at(t0, 2, Event{Kind: Text, Machine: "planner", Text: strings.Repeat("long ", 30)}),
+		at(t0, 3, Event{Kind: Text, Machine: "planner", Text: "short"}),
+	)
+	sc := screenOfWidth(out.String(), 40)
+	rows, _ := sc.bar(t)
+	if !strings.HasPrefix(rows[0], "ride on") || !strings.HasPrefix(rows[1], "start ▸") || !strings.HasSuffix(rows[1], "round 1") {
+		t.Errorf("the bar: %q", rows)
+	}
+	for _, r := range sc.above() {
+		if strings.Contains(plain(r), "ride on") || strings.Contains(plain(r), "round") {
+			t.Errorf("a row of the bar was left above it: %q", sc.above())
+		}
+	}
+	// The run starting, the machine running, the long line over five rows,
+	// and the short one.
+	if want := 1 + 1 + 5 + 1; len(sc.above()) != want {
+		t.Errorf("%d rows above the bar, not %d: %q", len(sc.above()), want, sc.above())
 	}
 }
 

@@ -118,7 +118,7 @@ func (wt *Watcher) rows() []string {
 	}
 	return []string{
 		fit(wt.runRow(), width),
-		fit(wt.routeRow(width), width),
+		wt.routeRow(width),
 		fit(wt.spendRow(), width),
 	}
 }
@@ -136,8 +136,12 @@ func (wt *Watcher) runRow() []span {
 	return []span{{text, bold}}
 }
 
-// routeRow is the route, with the round in the last columns.
-func (wt *Watcher) routeRow(width int) []span {
+// routeRow is the route, with the round in the last columns, as one row of
+// at most width cells. The round is what changes, so it is kept: a route too
+// long for the row loses its way back first, and then its end, which is
+// cut and ends in an ellipsis. Only a row too narrow for the round and a
+// little of the route is cut as it stands.
+func (wt *Watcher) routeRow(width int) string {
 	route := wt.bar.Route
 	left := []span{{"start", dim}}
 	for _, step := range route.Steps {
@@ -155,15 +159,32 @@ func (wt *Watcher) routeRow(width int) []span {
 			left = append(left, span{"]", ""})
 		}
 	}
+	back := span{}
 	if len(route.Back) > 0 {
-		left = append(left, span{" ↺ " + strings.Join(route.Back, ", "), dim})
+		back = span{" ↺ " + strings.Join(route.Back, ", "), dim}
 	}
-	round := fmt.Sprintf("round %d", wt.round)
-	gap := 2
-	if width < 1<<30 {
-		gap = max(width-spanLen(left)-utf8.RuneCountInString(round), 2)
+	round := span{fmt.Sprintf("round %d", wt.round), dim}
+	roundLen := utf8.RuneCountInString(round.text)
+	const gap = 2
+	row := func(left ...span) []span {
+		pad := gap
+		if width < 1<<30 {
+			pad = max(width-spanLen(left)-roundLen, gap)
+		}
+		return append(left, span{strings.Repeat(" ", pad), ""}, round)
 	}
-	return append(left, span{strings.Repeat(" ", gap), ""}, span{round, dim})
+	if spanLen(left)+spanLen([]span{back})+gap+roundLen <= width {
+		return fit(row(append(left, back)...), width)
+	}
+	if width < roundLen+3 {
+		return fit(row(append(left, back)...), width)
+	}
+	// Without the way back, if that is enough; else the route is cut so
+	// that the round has its place.
+	if spanLen(left)+gap+roundLen <= width {
+		return fit(row(left...), width)
+	}
+	return fit(left, width-gap-roundLen) + strings.Repeat(" ", gap) + round.style + round.text + reset
 }
 
 // mark is how a machine is shown on the route: in its colour, reversed, if
