@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Rides the ralph-loop line on a seed, in a target: the first ride, before
+# you build a factory of your own. For this repository only; the starter's
+# ride does the same steps through coach-me.
+#
+#   bin/ride <target> [--run <name>] [--seed <file>]
+#
+# It copies lines/ralph-loop into <target>/.assembly-lines/ralph-loop,
+# copies your Pi login (~/.pi/agent/auth.json) into each of its machines,
+# and starts the run. Run it again with the same target and run name to
+# resume an interrupted run. Then `watch <name> --target <target>`.
+#
+# FACTORY_BIN is the factory to run (default: bin/factory). RIDE_MODEL, for
+# comparing models, replaces the model both machines name.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+run=ride
+seed="$repo/tetris/spec.md"
+target=
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run)  run="${2:?--run needs a name}"; shift 2 ;;
+    --seed) seed="${2:?--seed needs a file}"; shift 2 ;;
+    -h|--help) sed -n '2,/^set -/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "bin/ride: unknown option $1" >&2; exit 2 ;;
+    *)  [ -z "$target" ] || { echo "bin/ride: one target only" >&2; exit 2; }
+        target="$1"; shift ;;
+  esac
+done
+[ -n "$target" ] || { echo "usage: bin/ride <target> [--run <name>] [--seed <file>]" >&2; exit 2; }
+
+login="${HOME}/.pi/agent/auth.json"
+[ -f "$login" ] || { echo "bin/ride: no Pi login at $login: sign in to Pi first" >&2; exit 1; }
+
+# The line goes into the target a run at a time: the files of the line are
+# copied over, and whatever runs the target already has are left alone.
+line="$target/.assembly-lines/ralph-loop"
+mkdir -p "$line"
+cp -R "$repo/lines/ralph-loop/." "$line/"
+for machine in "$line"/machines/*/; do
+  if [ -n "${RIDE_MODEL:-}" ]; then
+    printf '{"harness": "pi-rpc-acp", "model": "%s"}\n' "$RIDE_MODEL" > "$machine/machine.json"
+  fi
+  cp "$login" "$machine/auth.json"
+  chmod 600 "$machine/auth.json"
+done
+
+# The pi-rpc-acp bridge is in tools/, as it is in a Codespace.
+export PATH="$PATH:$repo/tools/pi-rpc-acp"
+
+"${FACTORY_BIN:-$repo/bin/factory}" --run "$run" --target "$target" --line ralph-loop --seed "$seed"
+echo "Watch it with: ${FACTORY_BIN:-bin/factory} watch $run --target $target"

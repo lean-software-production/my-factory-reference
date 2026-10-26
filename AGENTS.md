@@ -28,3 +28,10 @@ Skills, in `.agents/skills/` at the repository's root:
 - **implement-fast** — when the student wants you to just build the iteration.
 
 If your harness doesn't load skills, read the skill's `SKILL.md` and follow it.
+
+## Checks
+
+The factory is Go, with godog running `factory/spec/features/` as its suite.
+
+- Default suite, leaving out `@real-agent`: `cd factory && go test ./...`
+- Real-agent suite (runs `pi`, slow): `cd factory && FACTORY_TAGS=@real-agent go test ./steps/ -run TestFeatures -count=1 -timeout 60m`

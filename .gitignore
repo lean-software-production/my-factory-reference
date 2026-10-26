@@ -3,3 +3,6 @@
 # safety net.
 **/machines/*/auth.json
 **/machines/*/.credentials.json
+
+# Release binaries (bin/release). Never commit them.
+dist/

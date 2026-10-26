@@ -1,0 +1,57 @@
+# The factory, as of this iteration
+
+The factory builds software from a seed. A planner writes the plan, then
+a doer makes it one task at a time and a validator checks each attempt.
+Once a task's work is committed, the planner marks it done, and it says
+when the plan is complete.
+
+The factory writes none of its machines' work itself, and never reads
+the plan. A machine has a name and a folder of its own on its line,
+which is the configuration of the harness that runs it, `pi` by default
+or another named there. The folder holds the machine's `AGENTS.md`, its
+instructions, and the rest of its configuration, such as its model. It
+also holds the machine's own copy of your login, which is kept
+out of Git; with no login, a machine uses its provider's API key. The
+harness runs on that folder's configuration and no other: not yours, and
+none found in or above the target, whose files are the machine's work.
+Each machine answers with a result: JSON describing the job it did.
+
+The route through the machines is an **assembly line**: a graph the
+factory reads before it does any work. An edge only routes: its label
+names a field of the result of the machine it leaves. The planner
+decides whether there is more to do; the line holds the loop back to it
+and the retry after failed validation, and the factory limits how many
+attempts a task gets. Lines live in the target, in `.assembly-lines/`,
+a folder each, named for the line: its graph, `assembly-line.dot`, its
+machines, each in a folder of its own in `machines/`, and its runs, in
+`runs/`. A target can hold several lines, and each has its own machines.
+A line never names a target.
+
+A line can **fan out**: a machine with several unlabelled edges out runs
+every machine they lead to at the same time, and those branches meet at
+one machine, which runs once they have all finished and is given their
+results and nothing else. A branch that fails stops the run. The
+course's example is the **three big brains**: three reviewers on
+different providers' models report on each attempt, and a synthesiser
+reads their reports and decides.
+
+The factory runs as a daemon. You start a run, and it keeps working
+while another command watches it: what each machine generates and what
+it spends. It runs each machine as an ACP agent, speaking the Agent
+Client Protocol to it over stdio, and keeps what the machines generate
+and spend in the run's record, in the run's folder.
+
+You can send a message to a machine while it works: the factory passes
+it on with ACP's `_session/steering`.
+
+A **run** is a named execution of one of the target's assembly lines on a
+seed, saying what to build, against a target, the codebase to build it in. The
+factory source is separate from the generated product. The run
+lives in its line's folder, in `runs/<name>/`, with its plan and whatever
+its machines keep for it, and the factory commits that folder in
+commits of its own, never with the work. A run is found by its target
+and its name, so every invocation names the target; nothing of a run is
+kept in the factory. A run can be stopped, and
+started again later.
+
+New since iteration 7: `steering.feature`.
