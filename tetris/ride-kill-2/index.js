@@ -61,6 +61,13 @@ function tick() {
   render();
 }
 
+function hardDrop() {
+  if (!active) return;
+  while (canPlace(active, active.x, active.y + 1)) active.y++;
+  lockPiece();
+  render();
+}
+
 function render() {
   const border = '+' + '-'.repeat(WIDTH * 2) + '+';
   const rows = board.map((row, y) => '|' + row.map((cell, x) => {
@@ -104,6 +111,14 @@ if (!stdin.isTTY || !stdout.isTTY) {
     }
     if (key.name === 'up') {
       rotatePiece();
+      return;
+    }
+    if (key.name === 'down') {
+      tick();
+      return;
+    }
+    if (key.name === 'space') {
+      hardDrop();
       return;
     }
     const dx = key.name === 'left' ? -1 : key.name === 'right' ? 1 : 0;
