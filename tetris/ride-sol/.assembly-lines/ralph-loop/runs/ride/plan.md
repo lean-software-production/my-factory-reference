@@ -1,6 +1,6 @@
 - [x] Set up a Node.js project with `npm start` that launches a terminal program and displays a short welcome screen.
 - [x] Render a 10×20 empty Tetris board with borders, score, controls, and a layout that fits within 24 terminal rows.
-- [ ] Add the seven tetromino shapes, spawning, and drawing the active piece on the board.
+- [x] Add the seven tetromino shapes, spawning, and drawing the active piece on the board.
 - [ ] Add timed gravity, collision detection, and locking pieces into the settled board.
 - [ ] Add keyboard controls for moving left/right, soft dropping, and quitting cleanly.
 - [ ] Add piece rotation with collision checks and simple wall kicks.
