@@ -142,3 +142,4 @@
 {"time":"2026-10-26T03:34:50.459281166Z","kind":"usage","machine":"planner","provider":"openai-codex","model":"openai-codex/gpt-6-luna","input_tokens":5057,"output_tokens":545}
 {"time":"2026-10-26T03:34:50.459353558Z","kind":"result","machine":"planner","text":"{\"complete\": true, \"progress\": {\"done\": 11, \"total\": 11}}","result":{"complete":true,"progress":{"done":11,"total":11}}}
 {"time":"2026-10-26T03:34:50.459371563Z","kind":"end","machine":"planner"}
+{"time":"2026-10-26T03:34:50.478078605Z","kind":"run","run":"ride","state":"finished"}
