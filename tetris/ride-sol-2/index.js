@@ -34,6 +34,34 @@ function lockPiece() {
   clearInterval(gravity);
 }
 
+function move(dx) {
+  if (active && canPlace(active, active.x + dx, active.y)) {
+    active.x += dx;
+    render();
+  }
+}
+
+function rotate() {
+  if (!active || active.kind === 'O') return;
+  const rotated = active.cells.map(([x, y]) => [3 - y, x]);
+  // Try the current position first, then small horizontal wall kicks.
+  for (const dx of [0, -1, 1, -2, 2]) {
+    if (canPlace(active, active.x + dx, active.y, rotated)) {
+      active.x += dx;
+      active.cells = rotated;
+      render();
+      return;
+    }
+  }
+}
+
+function hardDrop() {
+  if (!active) return;
+  while (canPlace(active, active.x, active.y + 1)) active.y++;
+  lockPiece();
+  render();
+}
+
 function tick() {
   if (!active) return;
   if (canPlace(active, active.x, active.y + 1)) active.y++;
@@ -94,11 +122,17 @@ process.on('exit', () => {
   }
 });
 
+const readline = require('node:readline');
+readline.emitKeypressEvents(stdin);
 stdin.setRawMode(true);
 stdin.resume();
-stdin.setEncoding('utf8');
-stdin.on('data', (key) => {
-  if (key === 'q' || key === '\x03') close();
+stdin.on('keypress', (_, key) => {
+  if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) close();
+  else if (key?.name === 'left') move(-1);
+  else if (key?.name === 'right') move(1);
+  else if (key?.name === 'up') rotate();
+  else if (key?.name === 'down') tick();
+  else if (key?.name === 'space') hardDrop();
 });
 
 stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H');
