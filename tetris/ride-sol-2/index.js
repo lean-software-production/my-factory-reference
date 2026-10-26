@@ -50,6 +50,17 @@ function spawnPiece() {
   }
 }
 
+function restart() {
+  clearInterval(gravity);
+  for (const row of board) row.fill(null);
+  score = 0;
+  gameOver = false;
+  active = null;
+  spawnPiece();
+  gravity = setInterval(tick, 700);
+  render();
+}
+
 function lockPiece() {
   for (const [dx, dy] of active.cells) {
     board[active.y + dy][active.x + dx] = active.kind;
@@ -105,8 +116,9 @@ function render() {
     '↑    Rotate',
     '↓    Soft drop',
     'Space Hard drop',
+    'R    Restart',
     'Q    Quit',
-    gameOver ? 'GAME OVER' : '',
+    gameOver ? 'GAME OVER - R to restart' : '',
   ];
   const fallingCells = new Set(active ? active.cells.map(([dx, dy]) => `${active.x + dx},${active.y + dy}`) : []);
   const lines = [`┌${'─'.repeat(WIDTH * 2)}┐`];
@@ -153,6 +165,7 @@ stdin.setRawMode(true);
 stdin.resume();
 stdin.on('keypress', (_, key) => {
   if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) close();
+  else if (key?.name === 'r') restart();
   else if (key?.name === 'left') move(-1);
   else if (key?.name === 'right') move(1);
   else if (key?.name === 'up') rotate();
@@ -161,6 +174,4 @@ stdin.on('keypress', (_, key) => {
 });
 
 stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H');
-spawnPiece();
-render();
-gravity = setInterval(tick, 700);
+restart();
