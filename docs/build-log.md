@@ -1428,3 +1428,50 @@ doer's third turn (`task 2/10` on the bar).
 - The play script and the pty watch are scratch tools
   (`/home/ensembleworks-agent/work/ride-check/play.py`); they aren't in the
   repository.
+
+## Beyond the homeworks: the release build
+
+Not a homework: no iteration was fetched, and `factory/ITERATION` and
+`factory/spec/` are as homework 8 left them. This builds the binaries a
+first-time student's Codespace downloads for its ride.
+
+- **`bin/release <version>`** takes a date version, `YYYY.MM.DD` (`.1`, `.2`
+  for a second or third release the same day), and refuses unless the tree
+  is clean, the version has that shape *and* names a real date (month 1 to
+  12; day within the month, February 29 only in a leap year), and the tag
+  and `dist/<version>/` don't exist yet. It then builds `linux-amd64`,
+  `linux-arm64` and `darwin-arm64` with `CGO_ENABLED=0 go build -trimpath
+  -ldflags "-s -w -X main.version=<version>"` into `dist/<version>/` as
+  `factory-<version>-<os>-<arch>`, writes `SHA256SUMS` (bare file names, so
+  `sha256sum -c SHA256SUMS` works wherever they land), tags this repository
+  `<version>` (lightweight, like `homework-00N`), and prints the `gh release
+  create` command without running it. Nothing is uploaded. `dist/` is in
+  `.gitignore`; no binary is committed. `bin/factory` is not touched.
+- **One flag beyond the brief: `-buildvcs=false`.** Go otherwise stamps the
+  commit into the binary, so the same source builds different bytes once
+  the commit changes (here, after amending the log). Without the stamp the
+  same source and flags always give the same `SHA256SUMS`, which was
+  checked: the build was redone after the commit was amended and the three
+  sums were identical.
+- **Static, on purpose.** `net` is the only package in the factory's
+  dependencies with cgo files, and it uses it only for DNS and user
+  lookups; the factory dials a unix socket and nothing else, and imports
+  neither `os/user` nor `net/http`. With `CGO_ENABLED=0` `file` says
+  `statically linked` for both Linux binaries and `ldd` says `not a dynamic
+  executable`. (Built without `CGO_ENABLED=0`, the same code is dynamically
+  linked against `ld-linux`, which is why the flag matters.)
+- **Step 1, refusals.** Dirty tree: refused. `2026.13.01`: no month 13.
+  Also refused, each with a message naming what is wrong: `2026.00.10`,
+  `2026.02.29` (not a leap year), `2100.02.29` (a century that isn't), `2026.04.31`,
+  `2026.10.00`, `2026.10.32`, and the wrong shapes `2026.1.1`, `v2026.10.26`,
+  `2026.10.26.x`, `2026.10.26.`.
+- **Step 2, the build of `2026.10.26`:** three binaries (about 4.2 MB each)
+  and `SHA256SUMS` in `dist/2026.10.26/`. `file`: `ELF 64-bit LSB
+  executable, x86-64 ... statically linked, stripped` and `ELF 64-bit LSB
+  executable, ARM aarch64 ... statically linked, stripped`, and `Mach-O
+  64-bit arm64 executable`. `factory-2026.10.26-linux-amd64 --version`
+  prints `factory 2026.10.26`. It takes about 30 seconds.
+- **Not run on this box:** the `linux-arm64` and `darwin-arm64` binaries.
+  The release notes say so and ask a Mac user to try `--version` and a ride.
+- **Not published.** The `gh release create` command is printed by
+  `bin/release` and left for David.

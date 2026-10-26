@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Builds the factory's release binaries: what a student's Codespace downloads
+# for its first ride. For this repository only.
+#
+#   bin/release <version>
+#
+# <version> is a date, YYYY.MM.DD, with .1, .2 for a second or third release
+# the same day. The tree must be clean, so the binaries are the committed
+# code. It builds linux-amd64, linux-arm64 and darwin-arm64 into
+# dist/<version>/, writes SHA256SUMS beside them, tags this repository
+# <version> and prints the command that publishes them. It does not run it.
+#
+# The binaries are static (CGO_ENABLED=0) and carry no Git stamp
+# (-buildvcs=false), so the same commit always builds the same bytes.
+set -euo pipefail
+
+repo="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+cd "$repo"
+
+die() { echo "bin/release: $*" >&2; exit 1; }
+
+case "${1:-}" in
+  -h|--help) sed -n '2,/^set -/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+esac
+[ $# -eq 1 ] || { echo "usage: bin/release <version>   (YYYY.MM.DD, or YYYY.MM.DD.N)" >&2; exit 2; }
+version="$1"
+
+# The shape, then the date itself: month 1-12, day within that month's length.
+[[ "$version" =~ ^([0-9]{4})\.([0-9]{2})\.([0-9]{2})(\.[0-9]+)?$ ]] \
+  || die "version '$version' is not YYYY.MM.DD or YYYY.MM.DD.N"
+year=$((10#${BASH_REMATCH[1]})); month=$((10#${BASH_REMATCH[2]})); day=$((10#${BASH_REMATCH[3]}))
+[ "$month" -ge 1 ] && [ "$month" -le 12 ] || die "version '$version' has no month $month"
+case "$month" in
+  1|3|5|7|8|10|12) last=31 ;;
+  4|6|9|11)        last=30 ;;
+  2) if (( year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) )); then last=29; else last=28; fi ;;
+esac
+[ "$day" -ge 1 ] && [ "$day" -le "$last" ] || die "version '$version' has no day $day in month $month"
+
+[ -z "$(git status --porcelain)" ] || die "the tree is not clean: commit or stash first"
+if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+  die "tag $version already exists: release as $version.1 (or the next free .N)"
+fi
+
+out="dist/$version"
+[ ! -e "$out" ] || die "$out already exists: remove it first"
+mkdir -p "$out"
+
+for platform in linux/amd64 linux/arm64 darwin/arm64; do
+  os="${platform%/*}"; arch="${platform#*/}"
+  echo "building $os-$arch"
+  (cd factory && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+    go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$version" \
+      -o "../$out/factory-$version-$os-$arch" ./cmd/factory)
+done
+
+# Names only, no directory, so `sha256sum -c SHA256SUMS` works where they land.
+(cd "$out" && sha256sum factory-"$version"-* > SHA256SUMS)
+
+sha="$(git rev-parse --short HEAD)"
+git tag "$version"
+
+echo
+echo "Built $out:"
+(cd "$out" && ls -l)
+echo
+echo "Tagged $version. Push it with: git push origin $version"
+echo "To publish (not run):"
+echo
+echo "  gh release create $version -R lean-software-production/my-factory-starter --title $version --notes \"Built from my-factory-reference@$sha. darwin-arm64 is untested: it cannot be run where it is built. A Mac user, please try factory --version and a ride.\" $out/*"
