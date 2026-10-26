@@ -99,17 +99,22 @@ function start() {
 
   process.stdin.setRawMode(true);
   process.stdin.resume();
-  const fallTimer = setInterval(() => {
-    if (!movePiece(board, piece, 0, 1)) {
-      piece.shape.forEach((row, dy) => row.forEach((cell, dx) => {
-        if (cell) board[piece.y + dy][piece.x + dx] = true;
-      }));
-      const lines = clearCompletedLines(board);
-      score += [0, 100, 300, 500, 800][lines] || lines * 200;
-      piece = spawnPiece();
-    }
+  const lockPiece = () => {
+    piece.shape.forEach((row, dy) => row.forEach((cell, dx) => {
+      if (cell) board[piece.y + dy][piece.x + dx] = true;
+    }));
+    const lines = clearCompletedLines(board);
+    score += [0, 100, 300, 500, 800][lines] || lines * 200;
+    piece = spawnPiece();
+  };
+  const fallDelay = () => Math.max(100, 800 - Math.floor(score / 500) * 80);
+  const fall = () => {
+    if (!movePiece(board, piece, 0, 1)) lockPiece();
     render(board, piece, score);
-  }, 800);
+    clearInterval(fallTimer);
+    fallTimer = setInterval(fall, fallDelay());
+  };
+  let fallTimer = setInterval(fall, fallDelay());
   process.stdin.setEncoding('utf8');
   const cleanup = () => {
     clearInterval(fallTimer);
@@ -122,7 +127,15 @@ function start() {
       cleanup();
       process.exit(0);
     }
-    if (key === 'w' || key === '\u001b[A' || key === ' ') {
+    if (key === ' ') {
+      while (movePiece(board, piece, 0, 1)) { /* drop to the landing position */ }
+      lockPiece();
+      clearInterval(fallTimer);
+      fallTimer = setInterval(fall, fallDelay());
+      render(board, piece, score);
+      return;
+    }
+    if (key === 'w' || key === '\u001b[A') {
       rotatePiece(board, piece);
       render(board, piece, score);
       return;
@@ -131,6 +144,10 @@ function start() {
     if (movement) {
       movePiece(board, piece, movement[0], movement[1]);
       render(board, piece, score);
+      if (movement[1] && score) {
+        clearInterval(fallTimer);
+        fallTimer = setInterval(fall, fallDelay());
+      }
     }
   });
 }
