@@ -24,6 +24,24 @@ function move(game, dx) {
   return true;
 }
 
+function rotate(game) {
+  if (game.gameOver) return false;
+  const piece = game.piece;
+  if (piece.type === 'O') return true;
+
+  // Rotate within the piece's spawn box, then try small horizontal wall kicks.
+  const size = piece.type === 'I' ? 4 : 3;
+  const cells = piece.cells.map(([x, y]) => [size - 1 - y, x]);
+  for (const offset of [0, -1, 1, -2, 2]) {
+    if (canPlace(game.board, piece, piece.x + offset, piece.y, cells)) {
+      piece.x += offset;
+      piece.cells = cells;
+      return true;
+    }
+  }
+  return false;
+}
+
 function tick(game) {
   if (game.gameOver) return;
   if (canPlace(game.board, game.piece, game.piece.x, game.piece.y + 1)) {
@@ -38,4 +56,4 @@ function tick(game) {
   if (!canPlace(game.board, game.piece)) game.gameOver = true;
 }
 
-module.exports = { createGame, canPlace, move, tick };
+module.exports = { createGame, canPlace, move, rotate, tick };

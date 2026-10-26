@@ -1,6 +1,6 @@
 const readline = require('node:readline');
 const { render } = require('./render');
-const { createGame, move, tick } = require('./game');
+const { createGame, move, rotate, tick } = require('./game');
 
 function start() {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -40,6 +40,7 @@ function start() {
     if (key.name === 'left' || key.name === 'a') move(game, -1);
     else if (key.name === 'right' || key.name === 'd') move(game, 1);
     else if (key.name === 'down' || key.name === 's') tick(game);
+    else if (key.name === 'up' || key.name === 'w') rotate(game);
     else return;
     draw();
     if (game.gameOver) clearInterval(timer);

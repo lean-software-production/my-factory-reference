@@ -8,7 +8,8 @@ function render(board, score, piece = null, gameOver = false) {
     3: 'Controls:',
     4: 'Left/Right or A/D  Move',
     5: 'Down or S  Soft drop',
-    6: 'Q  Quit',
+    6: 'Up or W  Rotate',
+    7: 'Q  Quit',
     8: gameOver ? 'Game over' : '',
   };
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
