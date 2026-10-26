@@ -449,6 +449,7 @@ const PLAY = {
 };
 
 let lastTick = 0;
+let frameAsked = 0; // the frame playing has asked for, so that pause can cancel it
 
 // play plays from t, or from the start again if t is the end.
 function play() {
@@ -458,11 +459,12 @@ function play() {
   state.playing = true;
   lastTick = performance.now();
   showPlaying();
-  requestAnimationFrame(tick);
+  frameAsked = requestAnimationFrame(tick);
 }
 
 function pause() {
   state.playing = false;
+  cancelAnimationFrame(frameAsked);
   showPlaying();
 }
 
@@ -476,7 +478,7 @@ function tick(now) {
   for (const b of state.doc.breaks || []) if (from < b.at && b.at <= to) holdBreak(b);
   show(to);
   if (state.t >= state.doc.total) pause();
-  else requestAnimationFrame(tick);
+  else frameAsked = requestAnimationFrame(tick);
 }
 
 // jump shows t, from a click on the bar rather than from playing.
@@ -652,11 +654,8 @@ function machineClicked(name, shape) {
   }
   const part = view.nodes.get(name);
   openLog = { name, label: part.node.label, rect: shape.querySelector('rect'), shown: -1, heading: '' };
-  const log = document.getElementById('log');
-  log.style.visibility = 'hidden'; // measured and placed before it is seen
-  log.hidden = false;
+  document.getElementById('log').hidden = false;
   showLog(frameAt(state.doc.frames, state.t));
-  log.style.visibility = '';
 }
 
 function closeLog() {
@@ -711,8 +710,9 @@ function logLine(l, newest) {
 
 // placeLog puts the bubble above its machine, the tail pointing down at the
 // machine's middle. If there isn't room above in the window, it goes below
-// with the tail pointing up. It is kept inside the window, and if that
-// pulls the tail off the machine, the tail is hidden.
+// with the tail pointing up; if there's room on neither side, on the side
+// with more. It is kept inside the window, and if that pulls the tail off
+// the machine, the tail is hidden.
 function placeLog() {
   if (!openLog) return;
   const log = document.getElementById('log');
@@ -721,15 +721,19 @@ function placeLog() {
   const winW = document.documentElement.clientWidth, winH = window.innerHeight;
   const w = log.offsetWidth, h = log.offsetHeight;
   const { gap, tail, edge, corner } = BUBBLE;
-  const above = r.top - h - gap >= edge || r.bottom + h + gap > winH - edge;
+  const roomAbove = r.top - gap - edge, roomBelow = winH - edge - r.bottom - gap;
+  const above = h <= roomAbove || (h > roomBelow && roomAbove >= roomBelow);
   log.classList.toggle('below', !above);
+  // Inside the window top to bottom; a bubble taller than the window keeps its heading in view.
+  const top = Math.max(Math.min(above ? r.top - h - gap : r.bottom + gap, winH - h - edge), edge);
+  const covers = above ? top + h > r.top : top < r.bottom; // over the machine: the tail can't point at it
   const cx = r.left + r.width / 2;
   const left = Math.max(Math.min(cx - w / 2, winW - w - edge), edge);
   const tailX = cx - left - tail / 2;
-  log.classList.toggle('no-tail', tailX < corner || tailX > w - corner - tail);
+  log.classList.toggle('no-tail', covers || tailX < corner || tailX > w - corner - tail);
   log.style.setProperty('--tail-x', `${tailX}px`);
   log.style.left = `${left - s.left}px`;
-  log.style.top = `${(above ? r.top - h - gap : r.bottom + gap) - s.top}px`;
+  log.style.top = `${top - s.top}px`;
 }
 
 // ---------- starting ----------
