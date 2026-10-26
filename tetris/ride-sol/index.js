@@ -35,6 +35,23 @@ function canPlace(piece, x, y) {
   });
 }
 
+function rotatePiece(piece) {
+  if (piece.type === 'O') return false;
+  const size = piece.type === 'I' ? 4 : 3;
+  const cells = piece.cells.map(([x, y]) => [size - 1 - y, x]);
+  const rotated = { ...piece, cells };
+  // Try the current position first, then nudge away from a wall or the floor.
+  for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [-2, 0], [2, 0], [0, -1], [-1, -1], [1, -1]]) {
+    if (canPlace(rotated, piece.x + dx, piece.y + dy)) {
+      piece.x += dx;
+      piece.y += dy;
+      piece.cells = cells;
+      return true;
+    }
+  }
+  return false;
+}
+
 function tick() {
   if (!activePiece) return;
   if (canPlace(activePiece, activePiece.x, activePiece.y + 1)) {
@@ -101,6 +118,10 @@ if (process.stdin.isTTY) {
       process.exit(0);
     }
     if (!activePiece) return;
+    if (key.name === 'up') {
+      if (rotatePiece(activePiece)) render();
+      return;
+    }
     const dx = key.name === 'left' ? -1 : key.name === 'right' ? 1 : 0;
     if (dx && canPlace(activePiece, activePiece.x + dx, activePiece.y)) {
       activePiece.x += dx;
