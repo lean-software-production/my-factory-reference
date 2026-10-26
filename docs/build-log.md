@@ -1783,7 +1783,12 @@ and prints `Open http://localhost:<port>/`. It keeps serving until Ctrl-C.
   package comment's list of commands, not in the starter's README. It ships
   in the release and works for anyone who knows its name. The flags are
   `--graph <file>` (the graph defaults to `assembly-line.dot`, two folders up
-  from the record's folder) and `--port <n>` (default: any free port).
+  from the record's folder) and `--port <n>` (default: any free port). The page's heading names the run from
+  the record's own `run` events (else its folder), the line from the `run.json`
+  beside it (else the `--graph` file's folder, else the folder two up), and
+  the target only when the record is kept as
+  `<target>/.assembly-lines/<line>/runs/<run>/record.jsonl`. A graph that
+  cannot be found says to name it with `--graph <file>`.
 - **Why:** David demos the reference factory to students before they build
   their own, and wants them to see agents being guided through a workflow
   rather than going wild. A finished run replayed in a browser, fast, the same
@@ -1832,7 +1837,11 @@ and prints `Open http://localhost:<port>/`. It keeps serving until Ctrl-C.
     in reverse puts `plan_author`, the reviewers and the synthesiser before the
     doer, and the doer's loop after them: `start`, `plan_gate`, `plan_author`,
     the three reviewers stacked, `plan_synthesiser`, `doer`, `validator`,
-    `planner`, `finish`.
+    `planner`, `finish`. Walking in reverse written order is a rule of thumb
+    that fits the course's lines (ralph-loop, three-big-brains, careful and
+    implement-with-3-big-brains), not a proof: a gate whose skip edge to a
+    later machine is written last would have the planning part ranked after
+    that machine.
 - **A record with a stop and a restart replays as one run.** The idle gap
   between the stop and the restart is cut out of the time, which counts only
   the time the run was going; the demo is 36m 41s of work, and 19 minutes of
@@ -1841,8 +1850,8 @@ and prints `Open http://localhost:<port>/`. It keeps serving until Ctrl-C.
   up for at least 3 real seconds while playing, since at 60× its five run
   seconds go by in a blink. A record that stops without the run finishing says
   `The record ends at 19m 47s, before the run finished.`, and a run that
-  stopped or failed says so with its reason. A last line the run had not
-  finished writing is left out.
+  stopped says so (`The run stopped at 4m 47s.`); one that failed adds its
+  reason. A last line the run had not finished writing is left out.
 - **The bar.** Play and pause; 1×, 10× and 60× (the page opens paused at 0,
   with 10× selected, so there is time to talk first); a timeline you click or
   drag, with a tick for every hand-off (blue for a send-back); and `next
@@ -1874,15 +1883,19 @@ and prints `Open http://localhost:<port>/`. It keeps serving until Ctrl-C.
   - *Keys.* VS Code takes many keys for itself, so every control works with a
     click, and the space bar playing and pausing is only a bonus.
   - *Width.* The drawing scales to the pane, the bar wraps rather than
-    overflows, and the bubble is kept inside the frame's own window.
+    overflows, and the bubble is kept inside the frame's own window. For the
+    demo, give the page room: in a Codespace, collapse VS Code's sidebar or
+    give Simple Browser most of the screen. At about 960px wide the demo
+    line's smallest text is about 12px; at 640px it is about 8px.
 - **Tests.** `cmd/factory/replay_test.go`, `layout_test.go` and
   `visualise_test.go` test the replay of the demo record and of two stand-in
   records in `cmd/factory/testdata/replay/`, written by hand because the demo
   has no real one: `send-backs.jsonl`, a run on the demo line with three
   send-backs (a `not satisfied`, a `retry` and a `replan`; the demo has only
   retries), and `failed-turn.jsonl`, a `ralph-loop` run in which one turn
-  failed (`the model stopped answering`). The handler tests read every response's headers
-  for the framing rules above, and the page's files for network addresses.
+  failed (`the model stopped answering`). The handler tests read every
+  response's headers for the framing rules above, and the page's files for
+  network addresses.
 - **The browser check.** `bin/check-visualise-run` builds the factory into a
   temporary folder, installs `playwright@1.64.1` there with npm (the one
   thing that needs the network, once per run), starts `visualise-run` on the
@@ -1901,8 +1914,8 @@ and prints `Open http://localhost:<port>/`. It keeps serving until Ctrl-C.
   `The record ends at 19m 47s, before the run finished.`; `send-backs.jsonl`
   has 3 blue ticks and finishes; and a machine that says `<b>bold</b>` shows
   those characters, not bold text. It also checks that a machine that has not
-  started shows `nothing yet`. Run it from the repository root after any
-  change to the page or the command. It is not part of `go test`, which needs
+  started shows `nothing yet`. Run it after any change to the page or the
+  command. It is not part of `go test`, which needs
   neither a browser nor Node.
 - **What is still checked by hand.** David opens the demo run in Simple
   Browser in a Codespace in the browser, half the screen wide, and plays it

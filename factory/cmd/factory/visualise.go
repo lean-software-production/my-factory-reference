@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -60,6 +61,7 @@ func visualiseCommand(args []string) error {
 		return usage(fmt.Errorf("%d is not a port", *port))
 	}
 	recordPath := paths[0]
+	graphFlag := *graph
 	if *graph == "" {
 		*graph = filepath.Join(filepath.Dir(filepath.Dir(absolute(filepath.Dir(recordPath)))), "assembly-line.dot")
 	}
@@ -69,13 +71,13 @@ func visualiseCommand(args []string) error {
 	}
 	raw, err := os.ReadFile(*graph)
 	if err != nil {
-		return fmt.Errorf("could not read the assembly line: %v", err)
+		return fmt.Errorf("could not read the assembly line: %v%s", err, graphHint(graphFlag))
 	}
 	line, err := parseAssemblyLine(raw)
 	if err != nil {
 		return fmt.Errorf("could not read the assembly line %s: %v", *graph, err)
 	}
-	names := runNamesFor(recordPath)
+	names := runNamesFor(recordPath, graphFlag, events)
 	doc, err := json.Marshal(buildReplay(line, events, names))
 	if err != nil {
 		return err
@@ -86,11 +88,24 @@ func visualiseCommand(args []string) error {
 	}
 	ctx, stop := stoppedBySignals()
 	defer stop()
-	fmt.Printf("Replaying run %q on %s · %s\n", names.Run, names.Line, names.Target)
+	where := names.Line
+	if names.Target != "" {
+		where += " · " + names.Target
+	}
+	fmt.Printf("Replaying run %q on %s\n", names.Run, where)
 	fmt.Printf("Open http://localhost:%d/\n", listener.Addr().(*net.TCPAddr).Port)
 	fmt.Println(`In VS Code, choose "Preview in Editor" when it offers the port, or run "Simple Browser: Show" and paste the address.`)
 	fmt.Println("Ctrl-C stops it.")
 	return serveUntil(ctx, listener, replayHandler(doc, replayweb.Files()))
+}
+
+// graphHint is what to add to the error of a graph that could not be read:
+// when it was not named, that it can be.
+func graphHint(graphFlag string) string {
+	if graphFlag != "" {
+		return ""
+	}
+	return "; name it with --graph <file>"
 }
 
 // serveUntil serves on the listener until ctx is done, then stops serving,
@@ -155,22 +170,31 @@ func readRecord(recordPath string) ([]watch.Event, error) {
 	}
 }
 
-// runNamesFor is what the page calls a run, from where its record is kept,
-// in <target>/.assembly-lines/<line>/runs/<run>/. The run's folder says the
-// run, and the line is the one its run.json names, or else its folder.
-func runNamesFor(recordPath string) replayNames {
+// runNamesFor is what the page calls a run: the run is named by the first
+// run event of the record that names one, else by the folder of the record;
+// the line by the run.json beside the record, else by the folder of the
+// graph if one was named with --graph (graphFlag), else by the folder two up
+// from the record's. The target is only known when the record is kept as
+// <target>/.assembly-lines/<line>/runs/<run>/record.jsonl, and is empty
+// otherwise.
+func runNamesFor(recordPath, graphFlag string, events []watch.Event) replayNames {
 	runDir := absolute(filepath.Dir(recordPath))
 	lineDir := filepath.Dir(filepath.Dir(runDir))
-	names := replayNames{
-		Run:    filepath.Base(runDir),
-		Line:   filepath.Base(lineDir),
-		Target: shownTarget(filepath.Dir(filepath.Dir(lineDir))),
+	names := replayNames{Run: filepath.Base(runDir), Line: filepath.Base(lineDir)}
+	if graphFlag != "" {
+		names.Line = filepath.Base(filepath.Dir(absolute(graphFlag)))
+	}
+	if i := slices.IndexFunc(events, func(ev watch.Event) bool { return ev.Kind == watch.Run && ev.Run != "" }); i >= 0 {
+		names.Run = events[i].Run
 	}
 	if raw, err := os.ReadFile(filepath.Join(runDir, settingsFile)); err == nil {
 		var s settings
 		if json.Unmarshal(raw, &s) == nil && s.Line != "" {
 			names.Line = s.Line
 		}
+	}
+	if filepath.Base(filepath.Dir(runDir)) == "runs" && filepath.Base(filepath.Dir(lineDir)) == linesFolder {
+		names.Target = shownTarget(filepath.Dir(filepath.Dir(lineDir)))
 	}
 	return names
 }
@@ -192,7 +216,8 @@ var contentTypes = map[string]string{
 // /run.json. It looks at nothing but the path, so that it answers whatever
 // address a forwarded port is reached by, and it says nothing that stops a
 // page showing it from framing it. What it sends is never kept: the replay
-// is read afresh each time.
+// is built once, and the browser asks for it again each time because of
+// Cache-Control: no-store.
 func replayHandler(doc []byte, files fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

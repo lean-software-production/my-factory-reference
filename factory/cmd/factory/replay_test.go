@@ -69,8 +69,8 @@ func TestDemoRunTimeCutsOutTheGap(t *testing.T) {
 	if !near(d.Total, 2201.482) {
 		t.Errorf("the run took %.3fs of run time, not 2201.482s", d.Total)
 	}
-	if len(d.Breaks) != 1 || !near(d.Breaks[0].At, 287.528) || d.Breaks[0].Reason != "stopped" {
-		t.Errorf("the breaks are %+v, not one at 287.528s, stopped", d.Breaks)
+	if len(d.Breaks) != 1 || !near(d.Breaks[0].At, 287.528) || d.Breaks[0].Reason != "" {
+		t.Errorf("the breaks are %+v, not one at 287.528s with no reason", d.Breaks)
 	}
 	want := runEnd{State: "finished", At: d.Total, Tokens: "613.8k"}
 	if d.End != want {

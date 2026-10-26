@@ -28,6 +28,7 @@ const SIZE = {
 
 // The parts of the drawing that show() changes, made by draw().
 let view = null;
+let guessed = false; // the drawing's text could not be measured, so its layout was guessed
 
 // ---------- times, as watch shows them ----------
 
@@ -83,7 +84,26 @@ function textWidth(svg, cls, words) {
   const t = svgText(svg, cls, words, 0, 0);
   const w = t.getComputedTextLength();
   t.remove();
-  return w || words.length * 10; // not laid out, as in a hidden frame: a fair guess
+  if (w) return w;
+  guessed = true; // not laid out, as in a hidden frame: a fair guess, to draw again later
+  return words.length * 10;
+}
+
+// redrawIfMeasurable draws the line again, in place, once text can be
+// measured, if it was first drawn with its layout guessed.
+function redrawIfMeasurable() {
+  if (!guessed || !state.doc) return;
+  const svg = document.getElementById('drawing');
+  const probe = svgText(svg, 'name', 'M', 0, 0);
+  const measurable = probe.getComputedTextLength() > 0;
+  probe.remove();
+  if (!measurable) return;
+  guessed = false;
+  view = draw(state.doc);
+  steadyMeta(state.doc);
+  if (openLog) openLog.rect = view.nodes.get(openLog.name).g.querySelector('rect');
+  show(state.t);
+  placeLog();
 }
 
 // cubicMid is the middle (t = 0.5) of a cubic Bézier curve.
@@ -568,6 +588,7 @@ function wireBar() {
 // the end, so that the timeline beside them doesn't twitch as they change.
 function steadyMeta(doc) {
   const meta = document.getElementById('meta');
+  meta.style.minWidth = '';
   meta.textContent = `${fmtElapsed(doc.total)} of ${fmtElapsed(doc.total)} · ${(doc.end && doc.end.tokens) || '888.8k'} tokens`;
   meta.style.minWidth = `${Math.ceil(meta.getBoundingClientRect().width) + 12}px`;
 }
@@ -597,16 +618,21 @@ function showNote() {
   const near = (doc.breaks || []).filter(b => t >= b.at && t - b.at <= PLAY.breakShown).pop();
   const held = heldBreak && performance.now() < heldBreak.until ? heldBreak : null;
   let words = '';
-  if (near || held) words = `Stopped here, and started again: ${(near || held).reason}`;
+  if (near || held) words = `Stopped here, and started again${because((near || held).reason)}.`;
   else if (t >= doc.total) words = endWords(doc);
   document.getElementById('note').textContent = words;
+}
+
+// because is a reason after a colon, or nothing if there is none.
+function because(reason) {
+  return reason ? `: ${reason}` : '';
 }
 
 // endWords is how the run ended.
 function endWords(doc) {
   const e = doc.end || {}, when = fmtElapsed(doc.total);
   if (e.state === 'finished') return `The run finished in ${when}, using ${e.tokens} tokens.`;
-  if (e.state === 'stopped' || e.state === 'failed') return `The run ${e.state} at ${when}: ${e.reason}`;
+  if (e.state === 'stopped' || e.state === 'failed') return `The run ${e.state} at ${when}${because(e.reason)}.`;
   return `The record ends at ${when}, before the run finished.`;
 }
 
@@ -742,7 +768,8 @@ function placeLog() {
 function heading(doc) {
   document.title = `${doc.line} · run ${doc.run}`;
   document.getElementById('title').textContent = `the ${doc.line} line`;
-  document.getElementById('where').textContent = `${doc.target} · ${doc.line} · run "${doc.run}"`;
+  const where = `${doc.line} · run "${doc.run}"`;
+  document.getElementById('where').textContent = doc.target ? `${doc.target} · ${where}` : where;
 }
 
 // fontsLoaded waits for the kit's fonts, so text is measured in them.
@@ -764,6 +791,8 @@ async function boot() {
   linesByMachine = groupLines(state.doc.lines);
   buildTimeline(state.doc);
   steadyMeta(state.doc);
+  addEventListener('resize', redrawIfMeasurable);
+  document.addEventListener('visibilitychange', redrawIfMeasurable);
   wireBar();
   wireLog();
   show(0); // paused at the start, so there's time to talk first

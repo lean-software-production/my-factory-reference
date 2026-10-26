@@ -97,6 +97,11 @@ type walked struct {
 
 // followRoute follows the edges from start depth first, the last written first.
 // finish is where it stops: nothing leaves it.
+//
+// Walking in reverse written order is a rule of thumb that fits the course's
+// lines (ralph-loop, three-big-brains, careful and implement-with-3-big-brains),
+// not a proof: a gate whose skip edge to a later machine is written last
+// would have the planning part ranked after that machine.
 func (l *assemblyLine) followRoute() walked {
 	w := walked{back: make([]bool, len(l.edges))}
 	onRoute := map[string]bool{}

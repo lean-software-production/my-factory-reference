@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/lean-software-production/my-factory-reference/factory/internal/replayweb"
+	"github.com/lean-software-production/my-factory-reference/factory/internal/watch"
 )
 
 // said runs the command with the arguments and is its exit status, and
@@ -83,6 +84,18 @@ func TestVisualiseRunSaysWhenTheRecordIsMissing(t *testing.T) {
 	}
 }
 
+func TestVisualiseRunPointsToGraphWhenTheLineCannotBeFound(t *testing.T) {
+	status, _, stderr := said(t, "visualise-run", sendBacksRecord)
+	if status != 1 || !strings.Contains(stderr, "name it with --graph <file>") {
+		t.Errorf("exited %d saying %q, want 1 and a pointer to --graph", status, stderr)
+	}
+	missing := filepath.Join(t.TempDir(), "nowhere.dot")
+	status, _, stderr = said(t, "visualise-run", "--graph", missing, sendBacksRecord)
+	if status != 1 || !strings.Contains(stderr, missing) || strings.Contains(stderr, "name it with --graph") {
+		t.Errorf("exited %d saying %q, want 1, the graph named and no pointer to --graph", status, stderr)
+	}
+}
+
 func TestReadRecordIgnoresAPartialLastLine(t *testing.T) {
 	dir := t.TempDir()
 	whole := `{"time":"2026-01-02T03:04:05Z","kind":"run","run":"r","state":"started"}` + "\n" +
@@ -106,16 +119,43 @@ func TestReadRecordIgnoresAPartialLastLine(t *testing.T) {
 	}
 }
 
-func TestNamesComeFromThePathWithoutRunJSON(t *testing.T) {
-	demo := runNamesFor(demoRecord)
+func TestNamesComeFromTheRecordAndThePathWithoutRunJSON(t *testing.T) {
+	demo := runNamesFor(demoRecord, "", readEvents(t, demoRecord))
 	if demo.Run != "tetris-007" || demo.Line != "implement-with-3-big-brains" ||
 		!strings.HasSuffix(filepath.ToSlash(demo.Target), "demo/implement-with-3-big-brains") {
 		t.Errorf("the demo's names are %+v", demo)
 	}
-	ride := runNamesFor("../../../tetris/release-ride-3/.assembly-lines/ralph-loop/runs/ride/record.jsonl")
+	const ride3 = "../../../tetris/release-ride-3/.assembly-lines/ralph-loop/runs/ride/record.jsonl"
+	ride := runNamesFor(ride3, "", readEvents(t, ride3))
 	if ride.Run != "ride" || ride.Line != "ralph-loop" {
 		t.Errorf("the ride's names are %+v", ride)
 	}
+}
+
+func TestNamesOfARecordKeptOutsideATarget(t *testing.T) {
+	got := runNamesFor(sendBacksRecord, demoGraph, readEvents(t, sendBacksRecord))
+	if got != (replayNames{Run: "send-backs", Line: "implement-with-3-big-brains"}) {
+		t.Errorf("names are %+v, want run send-backs, line implement-with-3-big-brains and no target", got)
+	}
+}
+
+func TestARunWithNoNameInItsRecordIsNamedByItsFolder(t *testing.T) {
+	events := []watch.Event{{Kind: watch.Run, State: watch.Started}, {Kind: watch.Run, Run: "second", State: watch.Stopped}}
+	if got := runNamesFor(demoRecord, "", events); got.Run != "second" {
+		t.Errorf("the run is %q, want the first name the record gives, second", got.Run)
+	}
+	if got := runNamesFor(demoRecord, "", nil); got.Run != "tetris-007" {
+		t.Errorf("the run is %q, want its folder's name, tetris-007", got.Run)
+	}
+}
+
+func readEvents(t *testing.T, recordPath string) []watch.Event {
+	t.Helper()
+	events, err := readRecord(recordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return events
 }
 
 func TestNamesPreferTheLineRunJSONSays(t *testing.T) {
@@ -126,7 +166,7 @@ func TestNamesPreferTheLineRunJSONSays(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, settingsFile), []byte(`{"line":"said-in-run-json","seed":"s"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := runNamesFor(filepath.Join(dir, recordFile)); got.Line != "said-in-run-json" || got.Run != "r1" {
+	if got := runNamesFor(filepath.Join(dir, recordFile), "", nil); got.Line != "said-in-run-json" || got.Run != "r1" {
 		t.Errorf("names are %+v", got)
 	}
 }

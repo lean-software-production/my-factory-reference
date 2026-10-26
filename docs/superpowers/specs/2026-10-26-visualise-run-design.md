@@ -71,7 +71,7 @@ At the foot of the page:
 
 - Play and pause.
 - Speeds: 1×, 10× and 60×. 10× is selected when the page opens.
-- A timeline across the whole run, filled up to the moment shown, with a tick for each hand-off (each time a machine starts). A send-back (a machine starting along a back edge) has a blue tick. Clicking or dragging on the timeline jumps there.
+- A timeline across the whole run, filled up to the moment shown, with a tick for each hand-off (each time a machine starts). A send-back (a hand-off along a back edge where neither end is the planner) has a blue tick. Clicking or dragging on the timeline jumps there.
 - "Next hand-off", which jumps to just before the next machine starts.
 - The elapsed time out of the total (`6m 40s of 15m`) and the run's tokens so far (`284k tokens`), formatted as `watch` formats them.
 
@@ -106,7 +106,7 @@ Both must look good at a laptop's screen size, shared on a call.
 
 ## Constraints
 
-- **One parser.** Read the graph with the factory's existing line parsing (`line.go`). Find the planner, the route's order and the back edges the way `watch`'s route does, reusing its code.
+- **One parser.** Read the graph with the factory's existing line parsing (`line.go`). Find the planner, the route's order and the back edges the way `watch`'s route does, reusing its code. The layout has its own walk (`layout.go`), because `watch`'s route follows edges in written order and would put `doer` right after `plan_gate` on the demo line (see Calls: Layout).
 - **Finding the graph.** A record lives at `<target>/.assembly-lines/<line>/runs/<run>/record.jsonl`, so the graph is `../../assembly-line.dot` from it. The run's name and line come from that path, or from `run.json` beside the record when it's there.
 - **No network.** The page works offline: no CDN, no fonts or scripts from the web. Everything it needs, including the kit's CSS, its wobble filters and the Patrick Hand, Patrick Hand SC and Luckiest Guy fonts (all under the SIL Open Font License, licence files in the brand repo), is built into the binary.
 - **No new tools for students.** It mustn't need Graphviz or Node on the machine it runs on. The release stays one static binary per platform.

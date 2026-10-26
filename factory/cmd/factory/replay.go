@@ -205,12 +205,11 @@ func timeRun(events []watch.Event) runClock {
 	return c
 }
 
-// endReason says why a run ended, for a run that did not finish: stopped,
-// or failed and the first line of why, cut to 100 characters.
+// endReason says why a run ended, for a run that did not finish: nothing for
+// a plain stop, which says itself, and for a failure, failed and the first
+// line of why, cut to 100 characters.
 func endReason(ev watch.Event) string {
 	switch ev.State {
-	case watch.Stopped:
-		return watch.Stopped
 	case watch.Failed:
 		why, _, _ := strings.Cut(ev.Error, "\n")
 		if why == "" {
@@ -370,10 +369,10 @@ type scene struct {
 //
 // A machine starting is working, and not done, even if it was done earlier
 // in the round: done means done this round and not working now. The planner
-// starting begins a round, with none done in it. A machine ending its turn is no longer working, and
-// is done in this round unless its turn failed. What it spends is counted,
-// and the model it spent on shown. The run ending, however it ends, leaves
-// none working.
+// starting begins a round, with none done in it. A machine ending its turn
+// is no longer working, and is done in this round unless its turn failed.
+// What it spends is counted, and the model it spent on shown. The run
+// ending, however it ends, leaves none working.
 func (s *scene) apply(ev watch.Event) bool {
 	switch ev.Kind {
 	case watch.Start:
