@@ -1475,3 +1475,40 @@ first-time student's Codespace downloads for its ride.
   The release notes say so and ask a Mac user to try `--version` and a ride.
 - **Not published.** The `gh release create` command is printed by
   `bin/release` and left for David.
+
+### Step 3: the release binary rides Tetris
+
+`FACTORY_BIN=dist/2026.10.26/factory-2026.10.26-linux-amd64 bin/ride
+tetris/release-ride --run ride`, from the repository root, with the real
+`pi` on the box's `openai-codex` login and `watch ride` (the release binary
+too) logging to `logs/011-ride-watch*.log`. Another scratch target, like the
+other ride targets; the factory committed its work and its run folder here.
+
+- **The first attempt failed at task 4**, 2m 40s in and 49.2k tokens spent:
+  `run ride failed: could not read the doer's result: no line of its answer
+  is a JSON object`. The doer's last answer put its result on the end of its
+  prose line (`...gravity behavior. {"task":"..."}`) where its three earlier
+  answers had it on a line of its own after a blank one. It is not the
+  release build's doing: the dev build reads results the same way. It is a
+  model slip the factory is strict about, and a student can meet it.
+  (Stated plainly in the report, not fixed here.)
+- **Started again with the same command, the run resumed**: the planner
+  kept its 10 tasks, said 3 of 10 were done (the doer's fourth task was not
+  yet accepted), and the run went on to `task 10/10` and `run ride
+  finished`, 5m 54s later. About 8m 30s of machines' time in all; the run
+  total `watch` showed at the end was 170.7k tokens (in + out, cache not
+  counted). The factory's own commits run from `Start the ride run` to
+  `Keep what the ride run made`: one for each task, with an `Update the
+  plan` after each.
+- **What it made**: 189 lines of JS in `src/` (`game.js`, `index.js`,
+  `pieces.js`, `render.js`), a README, and 6 tests under `node --test`, all
+  passing. Its `npm start`, driven in a pty by the same script as the
+  earlier rides (left, left, up, space, right, down, then `q`): 16 frames,
+  at most 23 rows, alternate screen and hidden cursor on, restored on exit,
+  `q` exits with status 0. Playable by that test; nobody has played it by
+  hand yet. It is in `tetris/release-ride` (`npm --prefix
+  tetris/release-ride start`, controls: arrows move, up rotates, down soft
+  drops, space hard drops, `r` restarts, `q` quits).
+- **Cleanup**: `factory stop` stopped the daemon (the daemon stays up after
+  a run by design, and the run said "not running"); `pgrep` found no daemon,
+  `pi-rpc-acp` or `pi` after.
