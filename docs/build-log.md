@@ -1298,3 +1298,133 @@ binary a version.
   factory), exiting 130. Two vacuous tests were rewritten too.
   `TestWatchEndedEarlyLeavesNoPinnedLine` runs `watch` in a pty and ends it
   with ^C, and by killing the daemon; with `Close` doing nothing, both fail.
+
+## Beyond the homeworks: the ralph-loop line and the ride
+
+Not a homework: no iteration was fetched, and `factory/ITERATION` and
+`factory/spec/` are as homework 8 left them. This writes the line a student
+rides before building anything: a planner and a doer, built for speed, and
+proves it on Tetris with the real `pi`.
+
+- **The line** (`lines/ralph-loop/`): `start -> planner`,
+  `planner -> doer [label="not complete"]`, `planner -> finish
+  [label="complete"]`, `doer -> planner`. No validator, no fan out. Each
+  machine has `AGENTS.md`, `machine.json` (`pi-rpc-acp`, `openai-codex/gpt-6-sol`)
+  and the `.gitignore` that keeps everything else out of Git. The planner's
+  instructions are the quick line's (keep an existing plan's tasks; leave a
+  task open while its subtasks are) with a plan written as a checklist of
+  eight to twelve small tasks, and the result
+  `{"complete": <bool>, "progress": {"done": <n>, "total": <n>}}`. The
+  doer's add "work fast" and "leave the product working, run its tests".
+  `TestTheRalphLoopLineIsAPlannerAndADoer` and
+  `TestTheRalphLoopPlannerKeepsThePlanAndReportsProgress` check the graph,
+  the model and the rules.
+- **`bin/ride <target> [--run name] [--seed file]`** copies the line into
+  `<target>/.assembly-lines/ralph-loop` (leaving the target's runs alone),
+  copies `~/.pi/agent/auth.json` into each machine, puts `tools/pi-rpc-acp`
+  on the `PATH` and starts the run with `${FACTORY_BIN:-bin/factory}`. The
+  seed is `tetris/spec.md` unless given. `RIDE_MODEL` replaces the model
+  both machines name (used for the comparison below). No login is
+  committed: `git ls-files | grep -i auth` finds nothing.
+- **Parsed first**, with a fake `pi-rpc-acp` first on the `PATH`:
+  `bin/ride /tmp/probe --run probe` started, `watch` showed the planner's
+  `progress 1/1` and `run probe finished`, then `factory stop`.
+
+### Choosing the model
+
+Each ride is a fresh target under `tetris/`, run for real with `pi` on the
+build box's `openai-codex` login, `watch`ed from a log under `logs/`. Wall
+time is from the start of the run to its last commit; tokens are the last
+total `watch` showed (in + out, the cache not counted). "Playable" is
+`npm --prefix <t> start` in a pty, driven by a script that presses the
+arrow keys, space and `q` (so a game that dies on its first key is not
+playable), plus the game's own tests.
+
+| Target | Model | Planner's text | Wall time | Tokens | Tasks | Own tests | Playable |
+|---|---|---|---|---|---|---|---|
+| `ride-sol` | gpt-6-sol | first | 7m 11s | 126.1k | 10 | 5 pass | yes (24 rows) |
+| `ride-luna` | gpt-6-luna | first | 5m 20s | 186.3k | 11 | 5 pass | yes (24 rows) |
+| `ride-kill` | gpt-6-luna | first | 44s | 23.1k | 10 | none | no: the doer wrote a 3-line `index.js`, then the planner marked all 10 tasks done and `complete` |
+| `ride-sol-2` | gpt-6-sol | + check before marking | 7m 23s | 151.3k | 10 | 4 pass | yes (22 rows, alternate screen, cursor restored) |
+| `ride-luna-2` | gpt-6-luna | + check before marking | 5m 21s | 189.7k | 11 | 4 pass | **no**: dies on the first key (`key.toLowerCase is not a function`: stdin was never given an encoding) |
+| `ride-kill-2` | gpt-6-sol | + check before marking | 7m 49s (killed once) | 166.2k | 10 | none | yes |
+
+(`ride-kill` was meant for step 4; its run was over before there was
+anything to kill, so `ride-kill-2` was used.)
+
+- **gpt-6-luna is about two minutes faster and uses 25% to 50% more tokens,
+  and two of its three rides were not a working game.** `ride-kill` showed
+  the planner marking tasks done that the doer hadn't done; the planner
+  now says "don't take anyone's word that a task is done, the doer's
+  included... A task the doer hasn't done stays open, however much of the
+  product already exists" (a general rule, on the line's planner only).
+  With it, luna's ride finished, but its game crashed on the first key
+  pressed, and its own four tests passed because none of them presses a
+  key. Both of gpt-6-sol's rides, and the killed one, were playable. Sol
+  moved the bar one task at a time; luna's moved two at a time at times.
+- **Picked: `gpt-6-sol`**, the fastest model that was playable every time.
+  One ride a model is a small sample (the first Luna ride was fine); the
+  numbers above are what was seen, not a ranking.
+- **All the ride targets are scratch** (`tetris/ride-sol`, `ride-sol-2`,
+  `ride-luna`, `ride-luna-2`, `ride-kill`, `ride-kill-2`): they show what
+  the line makes and nothing depends on them. They sit inside this
+  repository, so the factory committed their work and their run folders
+  here, as it does for any target; their copies of the line are committed
+  too, as each ran it (`ride-sol` and `ride-luna` ran the planner text
+  before the check was added). Nothing else reads them.
+
+### The bar
+
+On a pty (`script -qc "stty cols 100 rows 30; ... watch ride --target
+tetris/ride-sol"`) the pinned line went `task 0/10 ░░░░...`, `task 1/10
+█░░░...`, `task 2/10 ███░░░...` and on to `task 10/10`, with the clock
+ticking between. The planner reports `progress` on every pass; once, with
+`ride-kill`'s luna planner, its first result left it out and the pinned line
+read `▶ ralph-loop  <elapsed>` until the next one, as designed.
+
+### An interrupted ride (Review Focus 5)
+
+`bin/ride tetris/ride-kill-2 --run ride`, then `kill -9` of the daemon in the
+doer's third turn (`task 2/10` on the bar).
+
+- **The daemon alone, killed:** no `.git/index.lock` was left (its `git`
+  children finish without it), and no `pi-rpc-acp` or `pi` outlived it (their
+  stdin closed). `watch` said `run ride is not running, and its record does
+  not say how it ended`. The doer's half-done work stayed uncommitted in the
+  target; the plan was already committed.
+- **Started again, the same command:** the run resumed. The planner was
+  given the plan that exists, kept its 10 tasks and reported `2/10`; the
+  doer did task 3 on top of the half-done work, and the run went on to
+  `10/10` and `run ride finished`. The plan's tasks before and after were
+  the same ten (diffed with the ticks removed). `factory stop` left no
+  daemon behind.
+- **Where it can go wrong: Git itself killed.** A `pre-commit` hook that
+  sleeps, with `git commit` killed while it held the lock (the whole process
+  group, as a Codespace going to sleep would do), left `.git/index.lock`.
+  Every `git add` and `git commit` after it failed, so a restarted run died
+  at its first commit (the planner's "Update the plan"). **Fixed**: a commit
+  that finds the lock in its way waits for it to go, or removes it when no
+  `git` process is running to hold it, and tries again; if one is still
+  running after 10s it fails saying so and leaves the lock. With a lock
+  planted before the restart, the real resume above cleared it and went on.
+  Tests (`git_test.go`): `TestAStaleIndexLockDoesNotStopACommit` (failed
+  before the fix, with the lock's "File exists" error) and
+  `TestALiveGitsIndexLockIsLeftAlone`.
+- **The planner's commit had no test.** `TestARunInterruptedAfterThePlannersCallHasThePlanCommitted`
+  (`resume_test.go`) kills the daemon with `kill -9` while the doer works,
+  checks `Write the plan` is in Git with the planner's plan, starts the run
+  again and checks the planner is given that plan (not told there is none).
+  With the commit in `run.go` removed it fails, on both checks.
+  Both fixes are in their own commit before the line's.
+- **Green:** the default suite passes whole (`logs/010-default-final.log`).
+
+### Problems found
+
+- `TestWatchEndedEarlyLeavesNoPinnedLine/the_factory_killed` (homework 9's
+  polish) leaves its `sh` harness running after the suite: three were found
+  on the box, one from each default-suite run, the oldest from before this
+  task. They hold no files open that matter, but a suite that must leave
+  nothing running doesn't. Not fixed here; for the final review.
+- The play script and the pty watch are scratch tools
+  (`/home/ensembleworks-agent/work/ride-check/play.py`); they aren't in the
+  repository.
