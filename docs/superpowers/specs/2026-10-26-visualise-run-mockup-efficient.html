@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>visualise-run: the efficient line</title>
+<link rel="stylesheet" href="https://lean-software-production.github.io/brand/kit/sketchbook.css">
+<script src="https://lean-software-production.github.io/brand/kit/sketchbook.js" defer></script>
+<style>
+  body { margin: 0; background: var(--sk-paper); color: var(--sk-body-text); font-family: var(--sk-font-body); font-size: 19px; }
+  .wrap { max-width: 1500px; margin: 0 auto; padding: 18px 28px 50px; }
+  h1.sk-title { font-size: 38px; margin: 4px 0 2px; }
+  .lede { font-size: 19px; margin: 2px 0 8px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--sk-font-label); font-size: 22px; margin: 4px 0; }
+  .graph svg { width: 100%; height: auto; display: block; }
+  .graph text { font-family: var(--sk-font-label); pointer-events: none; }
+  .graph text.model { font-family: var(--sk-font-body); fill: var(--sk-slate); }
+  .node { cursor: pointer; }
+  .node rect { fill: var(--sk-paper); stroke: var(--sk-ink); stroke-width: 3; }
+  .node:hover rect { stroke-width: 4; }
+  .node.done rect { fill: color-mix(in srgb, var(--sk-forest) 14%, var(--sk-paper)); }
+  .node.working rect { stroke: var(--sk-mustard-text); stroke-width: 4; fill: color-mix(in srgb, var(--sk-mustard) 45%, var(--sk-paper)); }
+  .node.open rect { stroke: var(--sk-deep-teal); stroke-width: 5; }
+  .node.ghost rect { stroke-dasharray: 6 6; cursor: default; }
+  .edge { fill: none; stroke: var(--sk-slate); stroke-width: 3; }
+  .edge.back { stroke: var(--sk-blue); }
+  .edge.quiet { stroke-dasharray: 3 7; opacity: .7; }
+  .elabel { font-family: var(--sk-font-body) !important; font-size: 17px; fill: var(--sk-body-text); }
+  .count { font-family: var(--sk-font-label); font-size: 15px; fill: var(--sk-paper); }
+  .countbg { fill: var(--sk-slate); }
+  .countbg.back { fill: var(--sk-blue); }
+  .stage { position: relative; }
+  .log { position: absolute; width: 360px; font-size: 16px; line-height: 1.3; display: none; z-index: 2; margin: 0; }
+  .log.show { display: block; }
+  .log::after { left: var(--tail-x, 2em); }
+  .log.below::after { bottom: auto; top: -.62em; transform: rotate(225deg) skew(8deg, 8deg); }
+  .log.no-tail::after { display: none; }
+  .log h4 { margin: 0 0 4px; font-family: var(--sk-font-label); font-size: 20px; display: flex; justify-content: space-between; }
+  .log h4 span { cursor: pointer; }
+  .log .lines { max-height: 210px; overflow-y: auto; }
+  .log .lines p { margin: 0 0 6px; }
+  .log .lines .t { font-family: var(--sk-font-label); color: var(--sk-slate); margin-right: 6px; }
+  .log .lines .res { font-family: var(--sk-font-label); color: var(--sk-deep-teal); }
+  .log .lines .now { background: var(--sk-highlighter); }
+  .hint { font-family: var(--sk-font-label); color: var(--sk-slate); font-size: 18px; text-align: center; margin: 0; }
+  .transport { display: flex; align-items: center; gap: 14px; margin-top: 8px; padding: 10px 14px; border-top: 3px dashed var(--sk-slate); font-size: 18px; }
+  .transport .play { font-size: 22px; }
+  .scrub { flex: 1; height: 14px; border: 3px solid var(--sk-ink); border-radius: 10px; position: relative; background: var(--sk-paper); }
+  .scrub i { position: absolute; top: -3px; bottom: -3px; width: 3px; background: var(--sk-slate); opacity: .5; }
+  .scrub s { position: absolute; top: -9px; bottom: -9px; width: 8px; margin-left: -4px; background: var(--sk-paper); border-left: 3px solid var(--sk-ink); border-right: 3px solid var(--sk-ink); transform: skewX(-15deg); }
+  .scrub b { position: absolute; left: 0; top: 0; bottom: 0; width: 48%; background: var(--sk-teal); border-radius: 6px; }
+  .speed span { padding: 1px 8px; border: 2px solid var(--sk-ink); border-radius: 8px; margin-left: 4px; }
+  .speed span.on { background: var(--sk-highlighter); }
+  .meta { font-family: var(--sk-font-label); }
+  .notes { margin-top: 14px; font-size: 18px; }
+  .notes li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 class="sk-title"><span class="sk-hl">Your efficient line</span></h1>
+  <p class="lede">Your run at 9m 31s: task 4, with <code>doer</code> working. Log lines are from your record. Click any machine.</p>
+
+  <div class="head"><span>tetris/tetris-007 · efficient · run "tetris-007"</span><span>round 4</span></div>
+
+  <div class="stage graph" id="stage">
+    <svg viewBox="0 -30 1640 560" aria-label="the efficient assembly line">
+      <g filter="url(#sk-wobble-line)">
+        <!-- forward edges -->
+        <path class="edge" d="M90 260 L130 260" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M280 260 L330 260" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M480 248 C 505 200, 505 145, 530 140" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M480 260 L530 260" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M480 272 C 505 320, 505 375, 530 380" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M710 140 C 735 145, 740 220, 760 245" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M710 260 L760 260" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M710 380 C 735 375, 740 300, 760 275" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M930 260 L980 260" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M1110 260 L1160 260" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M1300 260 L1350 260" marker-end="url(#sk-head)"/>
+        <path class="edge quiet" d="M1480 260 L1525 260" marker-end="url(#sk-head)"/>
+        <!-- plan_gate's skips, over the top -->
+        <path class="edge quiet" d="M190 222 C 300 20, 900 20, 1035 220" marker-end="url(#sk-head)"/>
+        <path class="edge" d="M220 222 C 420 -60, 1290 -60, 1405 222" marker-end="url(#sk-head)"/>
+        <!-- back edges, underneath -->
+        <path class="edge back quiet" d="M1215 297 C 1205 360, 1080 360, 1065 300" marker-end="url(#sk-head)"/>
+        <path class="edge back" d="M1415 297 C 1400 430, 1050 430, 1030 300" marker-end="url(#sk-head)"/>
+        <path class="edge back quiet" d="M845 297 C 840 480, 440 480, 420 300" marker-end="url(#sk-head)"/>
+        <path class="edge back quiet" d="M1245 297 C 1235 580, 400 580, 385 300" marker-end="url(#sk-head)"/>
+      </g>
+      <g filter="url(#sk-wobble-line)">
+        <g class="node ghost"><rect x="10" y="235" width="80" height="50" rx="25"/></g>
+        <g class="node" data-m="plan_gate"><rect x="130" y="222" width="150" height="76" rx="14"/></g>
+        <g class="node" data-m="plan_author"><rect x="330" y="222" width="150" height="76" rx="14"/></g>
+        <g class="node" data-m="plan_reviewer_opus"><rect x="530" y="102" width="180" height="76" rx="14"/></g>
+        <g class="node" data-m="plan_reviewer_gemini"><rect x="530" y="222" width="180" height="76" rx="14"/></g>
+        <g class="node" data-m="plan_reviewer_astra"><rect x="530" y="342" width="180" height="76" rx="14"/></g>
+        <g class="node" data-m="plan_synthesiser"><rect x="760" y="222" width="170" height="76" rx="14"/></g>
+        <g class="node working" data-m="doer"><rect x="980" y="222" width="130" height="76" rx="14"/></g>
+        <g class="node" data-m="validator"><rect x="1160" y="222" width="140" height="76" rx="14"/></g>
+        <g class="node done" data-m="planner"><rect x="1350" y="222" width="130" height="76" rx="14"/></g>
+        <g class="node ghost"><rect x="1525" y="235" width="100" height="50" rx="25"/></g>
+      </g>
+
+      <text x="50" y="266" text-anchor="middle" font-size="19">start</text>
+      <text x="205" y="257" text-anchor="middle" font-size="23">plan gate</text>
+      <text class="model" x="205" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol</text>
+      <text x="405" y="257" text-anchor="middle" font-size="23">plan author</text>
+      <text class="model" x="405" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol</text>
+      <text x="620" y="137" text-anchor="middle" font-size="21">reviewer opus</text>
+      <text class="model" x="620" y="163" text-anchor="middle" font-size="15">gpt-6.1-sol · high</text>
+      <text x="620" y="257" text-anchor="middle" font-size="21">reviewer gemini</text>
+      <text class="model" x="620" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol · high</text>
+      <text x="620" y="377" text-anchor="middle" font-size="21">reviewer astra</text>
+      <text class="model" x="620" y="403" text-anchor="middle" font-size="15">gpt-6-astra · high</text>
+      <text x="845" y="257" text-anchor="middle" font-size="22">plan synthesiser</text>
+      <text class="model" x="845" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol</text>
+      <text x="1045" y="257" text-anchor="middle" font-size="24">doer</text>
+      <text class="model" x="1045" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol · low</text>
+      <text x="1230" y="257" text-anchor="middle" font-size="24">validator</text>
+      <text class="model" x="1230" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol · high</text>
+      <text x="1415" y="257" text-anchor="middle" font-size="24">planner ✓</text>
+      <text class="model" x="1415" y="283" text-anchor="middle" font-size="15">gpt-6.1-sol</text>
+      <text x="1575" y="266" text-anchor="middle" font-size="19">finish</text>
+
+      <text class="elabel" x="285" y="246">not ready</text>
+      <text class="elabel" x="560" y="58" text-anchor="middle">pending</text>
+      <text class="elabel" x="820" y="-4" text-anchor="middle">ready</text>
+      <text class="elabel" x="955" y="246" text-anchor="middle">satisfied</text>
+      <text class="elabel" x="1325" y="246" text-anchor="middle">satisfied</text>
+      <text class="elabel" x="1503" y="246" text-anchor="middle">complete</text>
+      <text class="elabel" x="1140" y="368" text-anchor="middle">retry</text>
+      <text class="elabel" x="1225" y="420" text-anchor="middle">not complete</text>
+      <text class="elabel" x="630" y="452" text-anchor="middle">not satisfied</text>
+      <text class="elabel" x="820" y="526" text-anchor="middle">replan</text>
+
+      <!-- how often each taken edge has been taken, at 9m 31s -->
+      <g><circle class="countbg" cx="110" cy="245" r="12"/><text class="count" x="110" y="250" text-anchor="middle">2</text></g>
+      <g><circle class="countbg" cx="1135" cy="245" r="12"/><text class="count" x="1135" y="250" text-anchor="middle">3</text></g>
+      <g><circle class="countbg" cx="1325" cy="275" r="12"/><text class="count" x="1325" y="280" text-anchor="middle">3</text></g>
+      <g><circle class="countbg back" cx="1225" cy="397" r="12"/><text class="count" x="1225" y="402" text-anchor="middle">3</text></g>
+      <g><circle class="countbg" cx="1010" cy="-8" r="12"/><text class="count" x="1010" y="-3" text-anchor="middle">1</text></g>
+    </svg>
+    <div class="sk-bubble log" id="log"><h4><b id="logname"></b><span onclick="closeLog()" title="close">✕</span></h4><div class="lines" id="loglines"></div></div>
+  </div>
+  <p class="hint">click a machine to see what it's saying</p>
+
+  <div class="transport">
+    <span class="play">▶</span>
+    <div class="scrub"><b></b>
+      <i style="left:0%"></i><i style="left:8.7%"></i><i style="left:10.9%"></i><i style="left:11.9%"></i><i style="left:20.1%"></i><i style="left:23.1%"></i>
+      <s style="left:24.2%" title="stopped, started again 19 minutes later"></s>
+      <i style="left:24.9%"></i><i style="left:32.4%"></i><i style="left:34.8%"></i><i style="left:36.5%"></i><i style="left:42.3%"></i><i style="left:44.2%"></i><i style="left:45.6%"></i>
+      <i style="left:52%"></i><i style="left:54%"></i><i style="left:57%"></i><i style="left:61%"></i><i style="left:63%"></i><i style="left:66%"></i><i style="left:70%"></i><i style="left:72%"></i><i style="left:75%"></i><i style="left:79%"></i><i style="left:81%"></i><i style="left:84%"></i><i style="left:88%"></i><i style="left:90%"></i><i style="left:93%"></i><i style="left:97%"></i><i style="left:99.6%"></i>
+    </div>
+    <span class="speed"><span>1×</span><span class="on">10×</span><span>60×</span><span>next hand-off ⏭</span></span>
+    <span class="meta">9m 31s of 19m 48s · 149k tokens</span>
+  </div>
+
+  <ul class="notes">
+    <li><b>Planning first, then the building loop.</b> <code>plan_gate</code>'s two skips go over the top. Every edge back goes underneath, in blue.</li>
+    <li><b>Models</b> come from each machine's <code>usage</code> events.</li>
+    <li><b>The break</b> on the timeline is where the run was stopped and started again 19 minutes later. The gap is cut out.</li>
+    <li><b>Results</b> show as a short line, such as <i>satisfied ✓ · retry ✗ · replan ✗</i>, rather than raw JSON.</li>
+    <li>Dotted edges haven't been taken by this point. In your run, <i>retry</i>, <i>replan</i> and <i>not satisfied</i> are never taken.</li>
+  </ul>
+</div>
+<script>
+  // Real lines from the record, up to 9m 31s, timed from the run's start with the gap cut out.
+  const R = (t) => ({ res: t });
+  const logs = {
+    plan_gate: [["0:00", R("pending ✗ · ready ✗")], ["4:49", R("pending ✗ · ready ✓")]],
+    plan_author: [["1:43", R("changes: Added shared gameplay, state, display, timing, input, cleanup and verification contracts with explicit task handoffs. Preserved all 13 unchecked tasks…")]],
+    plan_reviewer_opus: [["1:48", "I’ll verify the plan’s revision, then check it against the seed for contract gaps and acceptance coverage."], ["2:01", R("no findings · Verified the plan SHA-256. The plan covers the seed, coherent gameplay and ownership contracts, deterministic testing…")]],
+    plan_reviewer_gemini: [["1:49", "I’ll verify the plan’s revision, then check it against the seed for concrete gaps in rules, task handoffs, and acceptance checks."], ["2:09", R("no findings · Verified the revision hash and reviewed the full plan against the seed.")]],
+    plan_reviewer_astra: [["1:49", "I’ll verify the plan’s revision, then review it against the seed and any recorded findings."], ["2:08", R("no findings · Verified the revision hash. The plan satisfies the seed…")]],
+    plan_synthesiser: [["2:21", R("satisfied ✓ · Accepted: matching review contexts, no findings, and reported coverage of seed requirements, gameplay contracts, testing, and terminal behavior.")]],
+    doer: [["8:16", "Horizontal movement checks pass for all seven pieces, and the full suite passes all 24 tests. The display and terminal behavior remain unchanged."], ["8:23", R("task 3. Implement collision-safe horizontal movement.")], ["9:23", "I’m implementing task 4: clockwise rotation with no wall kicks, square-piece no-op behavior, and collision/state-preservation tests. Existing unrelated changes will remain untouched."]],
+    validator: [["6:28", "I’ll review task 2 against the accepted plan, inspect the diff, and run focused checks."], ["6:54", R("task 2 · satisfied ✓ · retry ✗ · replan ✗")], ["8:44", "I’ll check task 3 against the accepted plan, inspect the movement changes, and run the relevant tests."], ["8:44", R("task 3 · satisfied ✓ · retry ✗ · replan ✗")]],
+    planner: [["7:14", R("complete ✗")], ["9:01", "Marked task 3 complete, matching commit c32a0ad and reported passing checks. Tasks 4–13 remain unfinished."], ["9:01", R("complete ✗")]],
+  };
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const stage = document.getElementById('stage'), log = document.getElementById('log'), box = document.getElementById('loglines');
+  let open = null;
+  function closeLog() { log.classList.remove('show'); if (open) open.classList.remove('open'); open = null; }
+  document.querySelectorAll('.node[data-m]').forEach(n => n.addEventListener('click', () => {
+    if (open === n) return closeLog();
+    if (open) open.classList.remove('open');
+    open = n; n.classList.add('open');
+    const m = n.dataset.m, lines = logs[m];
+    document.getElementById('logname').textContent = m.replace(/_/g, ' ') + (n.classList.contains('working') ? ' · working' : ' · last time');
+    box.innerHTML = lines.map(([t, l], i) => `<p class="${i === lines.length - 1 ? 'now' : ''}"><span class="t">${t}</span>${typeof l === 'string' ? esc(l) : `<span class="res">→ ${esc(l.res)}</span>`}</p>`).join('');
+    log.style.visibility = 'hidden'; log.classList.add('show');
+    box.scrollTop = box.scrollHeight;
+    place(n);
+    log.style.visibility = '';
+  }));
+  const GAP = 16, TAIL = 18, EDGE = 8;
+  function place(n) {
+    const r = n.querySelector('rect').getBoundingClientRect(), s = stage.getBoundingClientRect();
+    const w = log.offsetWidth, h = log.offsetHeight;
+    const above = r.top - h - GAP >= EDGE || r.bottom + h + GAP > window.innerHeight - EDGE;
+    log.classList.toggle('below', !above);
+    const cx = r.left + r.width / 2;
+    const left = Math.min(Math.max(cx - w / 2, EDGE), window.innerWidth - w - EDGE);
+    const tailX = cx - left - TAIL / 2;
+    log.classList.toggle('no-tail', tailX < 14 || tailX > w - 14 - TAIL);
+    log.style.setProperty('--tail-x', tailX + 'px');
+    log.style.left = (left - s.left) + 'px';
+    log.style.top = ((above ? r.top - h - GAP : r.bottom + GAP) - s.top) + 'px';
+  }
+  addEventListener('resize', () => open && place(open));
+  addEventListener('scroll', () => open && place(open));
+</script>
+</body>
+</html>
