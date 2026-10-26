@@ -27,6 +27,22 @@ function spawnPiece(type = Object.keys(SHAPES)[Math.floor(Math.random() * 7)]) {
   };
 }
 
+function canPlace(board, piece, x = piece.x, y = piece.y) {
+  return piece.shape.every((row, dy) => row.every((cell, dx) => {
+    if (!cell) return true;
+    const boardX = x + dx;
+    const boardY = y + dy;
+    return boardX >= 0 && boardX < BOARD_WIDTH && boardY >= 0 && boardY < BOARD_HEIGHT && !board[boardY][boardX];
+  }));
+}
+
+function movePiece(board, piece, dx, dy) {
+  if (!canPlace(board, piece, piece.x + dx, piece.y + dy)) return false;
+  piece.x += dx;
+  piece.y += dy;
+  return true;
+}
+
 function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null) {
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
   const cells = board.map((row) => row.slice());
@@ -42,8 +58,9 @@ function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_W
 }
 
 function start() {
+  const board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false));
   const piece = spawnPiece();
-  render(undefined, piece);
+  render(board, piece);
   if (!process.stdin.isTTY) {
     process.stdout.write('(Run in a terminal to play.)\n');
     return;
@@ -62,9 +79,14 @@ function start() {
       cleanup();
       process.exit(0);
     }
+    const movement = { '\u001b[D': [-1, 0], a: [-1, 0], '\u001b[C': [1, 0], d: [1, 0], '\u001b[B': [0, 1], s: [0, 1] }[key];
+    if (movement) {
+      movePiece(board, piece, movement[0], movement[1]);
+      render(board, piece);
+    }
   });
 }
 
 if (require.main === module) start();
 
-module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, render, start };
+module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, canPlace, movePiece, render, start };
