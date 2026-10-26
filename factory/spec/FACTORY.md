@@ -41,6 +41,9 @@ it spends. It runs each machine as an ACP agent, speaking the Agent
 Client Protocol to it over stdio, and keeps what the machines generate
 and spend in the run's record, in the run's folder.
 
+You can send a message to a machine while it works: the factory passes
+it on with ACP's `_session/steering`.
+
 A **run** is a named execution of one of the target's assembly lines on a
 seed, saying what to build, against a target, the codebase to build it in. The
 factory source is separate from the generated product. The run
@@ -51,6 +54,4 @@ and its name, so every invocation names the target; nothing of a run is
 kept in the factory. A run can be stopped, and
 started again later.
 
-New since iteration 6: `monitoring.feature` and `observability.feature`;
-machines run as ACP agents; the factory runs as a daemon, one run at a
-time, and runs can be stopped.
+New since iteration 7: `steering.feature`.
