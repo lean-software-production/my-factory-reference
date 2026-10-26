@@ -6,5 +6,5 @@
 - [x] Add piece rotation with collision handling and a hard-drop control.
 - [x] Clear completed lines and update the score and line count in the display.
 - [x] Spawn successive pieces and show game over when a new piece cannot enter the board.
-- [ ] Add restart and quit controls, with reliable terminal cleanup on exit or interruption.
+- [x] Add restart and quit controls, with reliable terminal cleanup on exit or interruption.
 - [ ] Add automated tests for board rules and a terminal-size check covering the full display, then document how to play.
