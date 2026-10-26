@@ -115,12 +115,12 @@ function renderBoard(board = emptyBoard(), piece = null) {
 }
 
 function initialScreen() {
-  return [renderBoard(), 'Terminal Tetris', 'Press any key to start · Q to quit'].join('\n');
+  return [renderBoard(), 'TERMINAL TETRIS · Press any key to start', 'A/D move · W rotate · S soft drop · Space hard drop · P pause · Q quit'].join('\n');
 }
 
 function render(state) {
   const screen = state?.active
-    ? renderBoard(state.board, state.piece) + `\nScore: ${state.score || 0}  Lines: ${state.lines || 0}  Level: ${state.level || 1}` + (state.gameOver ? '\nGAME OVER · Press R to restart or Q to quit' : '\nTerminal Tetris')
+    ? renderBoard(state.board, state.piece) + `\nScore: ${state.score || 0}  Lines: ${state.lines || 0}  Level: ${state.level || 1}` + (state.gameOver ? ' · GAME OVER · R restart · Q quit' : state.paused ? ' · PAUSED · P resume' : '\nA/D move · W rotate · S soft drop · Space hard drop · P pause · Q quit')
     : initialScreen();
   process.stdout.write('\x1b[2J\x1b[H' + screen + '\n');
 }
@@ -136,11 +136,22 @@ function main() {
   process.stdin.setRawMode(true);
   process.stdin.resume();
   const timer = setInterval(() => { tick(state); render(state); }, 700);
+  let cleaned = false;
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    clearInterval(timer);
+    process.stdin.removeListener('data', onKey);
+    if (process.stdin.isTTY && process.stdin.isRaw) process.stdin.setRawMode(false);
+    process.stdin.pause();
+  };
+  const onExit = () => cleanup();
+  process.once('SIGINT', () => { cleanup(); process.exit(130); });
+  process.once('SIGTERM', () => { cleanup(); process.exit(143); });
+  process.once('exit', onExit);
   const onKey = (key) => {
     if (key === '\u0003' || key.toLowerCase() === 'q') {
-      clearInterval(timer);
-      process.stdin.setRawMode(false);
-      process.stdin.pause();
+      cleanup();
       process.exit(0);
     }
     if (state.gameOver) {
