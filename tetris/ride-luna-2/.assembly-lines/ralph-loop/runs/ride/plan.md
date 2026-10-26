@@ -1,6 +1,6 @@
 - [x] Set up a runnable terminal app launched with `npm start` that displays an initial game screen
 - [x] Draw a bordered playfield and represent the Tetris grid and settled blocks
-- [ ] Add tetromino definitions, spawn logic, and movement with wall and block collision checks
+- [x] Add tetromino definitions, spawn logic, and movement with wall and block collision checks
 - [ ] Implement rotation with collision checks and a hard-drop/soft-drop behavior
 - [ ] Add automatic piece falling and lock pieces when they land
 - [ ] Detect and clear completed rows, then compact the board
