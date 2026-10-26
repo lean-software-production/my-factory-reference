@@ -67,10 +67,35 @@ function hardDrop(board, piece) {
   return distance;
 }
 
-function renderBoard(board = emptyBoard()) {
+function lockPiece(board, piece) {
+  for (let y = 0; y < piece.shape.length; y++) {
+    for (let x = 0; x < piece.shape[y].length; x++) {
+      const by = piece.y + y;
+      const bx = piece.x + x;
+      if (piece.shape[y][x] && by >= 0 && by < HEIGHT && bx >= 0 && bx < WIDTH) {
+        board[by][bx] = piece.type;
+      }
+    }
+  }
+}
+
+function tick(state) {
+  if (!state.active || state.gameOver) return;
+  if (!softDrop(state.board, state.piece)) {
+    lockPiece(state.board, state.piece);
+    state.piece = spawnPiece(state.nextType, state.board);
+    state.nextType = Object.keys(PIECES)[Math.floor(Math.random() * Object.keys(PIECES).length)];
+    if (!state.piece) state.gameOver = true;
+  }
+}
+
+function renderBoard(board = emptyBoard(), piece = null) {
   const rows = ['┌' + '─'.repeat(WIDTH * 2) + '┐'];
   for (let y = 0; y < HEIGHT; y++) {
-    const cells = Array.from({ length: WIDTH }, (_, x) => board[y]?.[x] ? '██' : '  ');
+    const cells = Array.from({ length: WIDTH }, (_, x) => {
+      const occupied = board[y]?.[x] || (piece && y >= piece.y && y < piece.y + piece.shape.length && x >= piece.x && x < piece.x + piece.shape[y - piece.y].length && piece.shape[y - piece.y][x]);
+      return occupied ? '██' : '  ';
+    });
     rows.push('│' + cells.join('') + '│');
   }
   rows.push('└' + '─'.repeat(WIDTH * 2) + '┘');
@@ -81,25 +106,36 @@ function initialScreen() {
   return [renderBoard(), 'Terminal Tetris', 'Press any key to start · Q to quit'].join('\n');
 }
 
-function render() {
-  process.stdout.write('\x1b[2J\x1b[H' + initialScreen() + '\n');
+function render(state) {
+  const screen = state?.active
+    ? renderBoard(state.board, state.piece) + (state.gameOver ? '\nGAME OVER' : '\nTerminal Tetris')
+    : initialScreen();
+  process.stdout.write('\x1b[2J\x1b[H' + screen + '\n');
 }
 
 function main() {
-  render();
+  const state = { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false };
+  render(state);
   if (!process.stdin.isTTY) return;
   process.stdin.setRawMode(true);
   process.stdin.resume();
+  const timer = setInterval(() => { tick(state); render(state); }, 700);
   const onKey = (key) => {
     if (key === '\u0003' || key.toLowerCase() === 'q') {
+      clearInterval(timer);
       process.stdin.setRawMode(false);
       process.stdin.pause();
       process.exit(0);
     }
-    render();
+    if (!state.active) {
+      state.active = true;
+      state.piece = spawnPiece(state.nextType, state.board);
+      state.nextType = Object.keys(PIECES)[Math.floor(Math.random() * Object.keys(PIECES).length)];
+    }
+    render(state);
   };
   process.stdin.on('data', onKey);
 }
 
 if (require.main === module) main();
-module.exports = { WIDTH, HEIGHT, PIECES, emptyBoard, spawnPiece, collides, movePiece, rotatePiece, softDrop, hardDrop, renderBoard, initialScreen };
+module.exports = { WIDTH, HEIGHT, PIECES, emptyBoard, spawnPiece, collides, movePiece, rotatePiece, softDrop, hardDrop, lockPiece, tick, renderBoard, initialScreen };
