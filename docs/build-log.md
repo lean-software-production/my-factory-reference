@@ -983,3 +983,36 @@ Things to note:
   with no way to ask seemed worse than one more command.
 - `watch` of a run that is running follows it until it ends; the steps for
   "I watch the run" read what it has shown so far.
+
+### Fix round after review
+
+The `homework-007` tag predates this fix. The review found a gap in
+Review Focus 2: **a missing `pi` hung the run forever.** With `pi` off the
+`PATH`, `pi-rpc-acp` answers `initialize` and `session/new`, takes the
+prompt, and never answers it: its spawn error fires before a turn exists,
+and is dropped. Neither the ACP client nor the start checked for it, so
+the run said "started run tetris" and the machine waited until it was
+stopped. A missing `pi-rpc-acp` was likewise only reported after the start.
+
+Now, before any machine is called, the start checks each machine's
+harness the way it checks its login. The harness must be on the caller's
+`PATH`, or at the path its `machine.json` names. For `pi-rpc-acp`, `pi`
+must be on the `PATH` too. Otherwise the start is refused, naming the
+machine and what is missing: "could not run the planner (pi-rpc-acp): it
+runs pi, and pi is not on the PATH". Through `bin/factory`, with the real
+bridge and no `pi`, that took 0.6s.
+`TestAMissingHarnessIsRefusedAtTheStart` starts a whole run with `pi`
+missing (and a `pi-rpc-acp` that, like the real one, never answers), then
+with `pi-rpc-acp` missing. Both are refused in under a second. With the
+check taken out, both started, and the test failed. The suite's fake
+`pi-rpc-acp` now has a fake `pi` beside it, which is never run.
+
+The bridge itself should refuse the prompt with its spawn error too. That
+is a second local commit on the starter branch above
+(`pi-rpc-acp-reports-pi-errors`, `5530ca6`): with no `pi` on the `PATH`,
+the prompt is refused with "could not run pi: spawn pi ENOENT" in 0.1s.
+Like the first, it waits for David's go-ahead to be pushed.
+
+Default suite 86/86, and `go test -race ./cmd/factory ./internal/...`
+passes. The run path for a harness that is there is unchanged, so the
+real-agent suite was not re-run.

@@ -101,6 +101,44 @@ func (m Machine) CheckSignIn(env []string) error {
 	return fmt.Errorf("the %s cannot sign in to %s: it has no login of its own for it, and no API key (%s)", m.Name, m.Provider(), hint)
 }
 
+// bridges are the ACP agents that run another program, which must be on
+// the PATH too: pi-rpc-acp runs pi.
+var bridges = map[string]string{"pi-rpc-acp": "pi"}
+
+// CheckHarness says so if the machine's ACP agent cannot be run in the
+// environment it is to run in: it is not there, or, for a bridge, what it
+// runs is not on the PATH. An agent that cannot start what it bridges to
+// may never answer, so this is checked before the machine is called.
+func (m Machine) CheckHarness(env []string) error {
+	if env == nil {
+		env = os.Environ()
+	}
+	path, err := lookPath(m.Harness, env)
+	if err == nil {
+		err = executable(path)
+	}
+	if err != nil {
+		return fmt.Errorf("could not run the %s (%s): %v", m.Name, m.Harness, err)
+	}
+	if program, ok := bridges[filepath.Base(m.Harness)]; ok {
+		if _, err := lookPath(program, env); err != nil {
+			return fmt.Errorf("could not run the %s (%s): it runs %s, and %v", m.Name, m.Harness, program, err)
+		}
+	}
+	return nil
+}
+
+func executable(path string) error {
+	info, err := os.Stat(path)
+	switch {
+	case err != nil:
+		return fmt.Errorf("there is no %s", path)
+	case info.IsDir() || info.Mode()&0o111 == 0:
+		return fmt.Errorf("%s is not a program", path)
+	}
+	return nil
+}
+
 // command is how the machine's ACP agent is started, in dir, in the
 // environment env. An agent is started the way pi-rpc-acp is: pointed at
 // the machine's folder, and given arguments it passes on to pi, which give
@@ -134,7 +172,7 @@ func lookPath(name string, env []string) (string, error) {
 			continue
 		}
 		path := filepath.Join(dir, name)
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+		if executable(path) == nil {
 			return path, nil
 		}
 	}

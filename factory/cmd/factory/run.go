@@ -35,8 +35,12 @@ func (i invocation) prepare(env []string) (*run, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A machine that cannot sign in is reported before any machine is called.
+	// A machine that cannot be run, or cannot sign in, is reported before
+	// any machine is called.
 	for _, name := range line.machinesOn() {
+		if err := machines[name].CheckHarness(env); err != nil {
+			return nil, err
+		}
 		if err := machines[name].CheckSignIn(env); err != nil {
 			return nil, err
 		}

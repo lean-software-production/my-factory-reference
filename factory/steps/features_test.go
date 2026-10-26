@@ -16,7 +16,7 @@ import (
 var (
 	factoryBinary string // the factory, copied into each example's workspace
 	agentDouble   string // the double chosen as the agent on the command line
-	fakePiDir     string // holds a double called pi-rpc-acp, put first on the PATH
+	fakePiDir     string // holds a double called pi-rpc-acp, and pi, put first on the PATH
 	spyDouble     string // wraps the real pi-rpc-acp, noting whether it changed the target
 	bridgeDir     string // the starter's tools/pi-rpc-acp, which runs pi as an ACP agent
 )
@@ -49,6 +49,9 @@ func buildSuite(dir string) error {
 		{"-o", factoryBinary, "../cmd/factory"},
 		{"-o", agentDouble, "./doubles/agent"},
 		{"-o", filepath.Join(fakePiDir, "pi-rpc-acp"), "./doubles/agent"},
+		// The factory checks the pi that pi-rpc-acp runs is there. The
+		// double never runs it.
+		{"-o", filepath.Join(fakePiDir, "pi"), "./doubles/agent"},
 		{"-o", spyDouble, "./doubles/spy"},
 	}
 	for _, args := range builds {
