@@ -4,7 +4,7 @@
 - [x] Add a timed gravity loop and lock pieces when they land.
 - [x] Add keyboard controls for moving left and right and soft dropping, with collision checks.
 - [x] Add piece rotation with collision checks and a usable wall adjustment.
-- [ ] Clear completed rows, shift rows above down, and update the score.
+- [x] Clear completed rows, shift rows above down, and update the score.
 - [ ] Add hard drop and a visible next-piece preview within the 24-row layout.
 - [ ] Detect blocked spawns, show a game-over message within the layout, and allow restarting.
 - [ ] Add automated checks for board rules and display height, and document terminal startup and controls.
