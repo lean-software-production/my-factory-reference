@@ -43,6 +43,19 @@ function movePiece(board, piece, dx, dy) {
   return true;
 }
 
+function clearCompletedLines(board) {
+  let cleared = 0;
+  for (let y = board.length - 1; y >= 0; y--) {
+    if (board[y].every(Boolean)) {
+      board.splice(y, 1);
+      board.unshift(Array(BOARD_WIDTH).fill(false));
+      cleared++;
+      y++;
+    }
+  }
+  return cleared;
+}
+
 function rotatePiece(board, piece) {
   const rotated = piece.shape[0].map((_, x) =>
     piece.shape.map((row) => row[x]).reverse());
@@ -60,7 +73,7 @@ function rotatePiece(board, piece) {
   return false;
 }
 
-function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null) {
+function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false)), piece = null, score = 0) {
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
   const cells = board.map((row) => row.slice());
   if (piece) {
@@ -71,13 +84,14 @@ function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_W
     }));
   }
   const rows = cells.map((row) => `|${row.map((cell) => cell ? '[]' : '  ').join('')}|`);
-  process.stdout.write(`${clear}TETRIS\n${border}\n${rows.join('\n')}\n${border}\n`);
+  process.stdout.write(`${clear}TETRIS  Score: ${score}\n${border}\n${rows.join('\n')}\n${border}\n`);
 }
 
 function start() {
   const board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false));
   let piece = spawnPiece();
-  render(board, piece);
+  let score = 0;
+  render(board, piece, score);
   if (!process.stdin.isTTY) {
     process.stdout.write('(Run in a terminal to play.)\n');
     return;
@@ -90,9 +104,11 @@ function start() {
       piece.shape.forEach((row, dy) => row.forEach((cell, dx) => {
         if (cell) board[piece.y + dy][piece.x + dx] = true;
       }));
+      const lines = clearCompletedLines(board);
+      score += [0, 100, 300, 500, 800][lines] || lines * 200;
       piece = spawnPiece();
     }
-    render(board, piece);
+    render(board, piece, score);
   }, 800);
   process.stdin.setEncoding('utf8');
   const cleanup = () => {
@@ -108,17 +124,17 @@ function start() {
     }
     if (key === 'w' || key === '\u001b[A' || key === ' ') {
       rotatePiece(board, piece);
-      render(board, piece);
+      render(board, piece, score);
       return;
     }
     const movement = { '\u001b[D': [-1, 0], a: [-1, 0], '\u001b[C': [1, 0], d: [1, 0], '\u001b[B': [0, 1], s: [0, 1] }[key];
     if (movement) {
       movePiece(board, piece, movement[0], movement[1]);
-      render(board, piece);
+      render(board, piece, score);
     }
   });
 }
 
 if (require.main === module) start();
 
-module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, canPlace, movePiece, rotatePiece, render, start };
+module.exports = { BOARD_WIDTH, BOARD_HEIGHT, SHAPES, spawnPiece, canPlace, movePiece, clearCompletedLines, rotatePiece, render, start };
