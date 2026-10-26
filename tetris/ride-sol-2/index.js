@@ -1,4 +1,4 @@
-// Terminal lifecycle and board display. Gameplay will be added here.
+// Terminal lifecycle and board display.
 const WIDTH = 10;
 const HEIGHT = 20;
 const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(null));
@@ -14,8 +14,32 @@ const SHAPES = {
 };
 const kinds = Object.keys(SHAPES);
 const kind = kinds[Math.floor(Math.random() * kinds.length)];
-const active = { kind, x: Math.floor((WIDTH - 4) / 2), y: 0, cells: SHAPES[kind] };
+let active = { kind, x: Math.floor((WIDTH - 4) / 2), y: 0, cells: SHAPES[kind] };
 let score = 0;
+let gravity;
+
+function canPlace(piece, x, y, cells = piece.cells) {
+  return cells.every(([dx, dy]) => {
+    const col = x + dx;
+    const row = y + dy;
+    return col >= 0 && col < WIDTH && row >= 0 && row < HEIGHT && !board[row][col];
+  });
+}
+
+function lockPiece() {
+  for (const [dx, dy] of active.cells) {
+    board[active.y + dy][active.x + dx] = active.kind;
+  }
+  active = null; // Spawning the next piece is added in the next gameplay step.
+  clearInterval(gravity);
+}
+
+function tick() {
+  if (!active) return;
+  if (canPlace(active, active.x, active.y + 1)) active.y++;
+  else lockPiece();
+  render();
+}
 
 function render() {
   // Twenty play rows plus a top and bottom border: 22 terminal rows total.
@@ -31,7 +55,7 @@ function render() {
     'Space Hard drop',
     'Q    Quit',
   ];
-  const fallingCells = new Set(active.cells.map(([dx, dy]) => `${active.x + dx},${active.y + dy}`));
+  const fallingCells = new Set(active ? active.cells.map(([dx, dy]) => `${active.x + dx},${active.y + dy}`) : []);
   const lines = [`┌${'─'.repeat(WIDTH * 2)}┐`];
   for (let y = 0; y < HEIGHT; y++) {
     lines.push(`│${board[y].map((cell, x) => cell || fallingCells.has(`${x},${y}`) ? '██' : '  ').join('')}│`);
@@ -54,6 +78,7 @@ let closed = false;
 function close() {
   if (closed) return;
   closed = true;
+  clearInterval(gravity);
   stdin.setRawMode(false);
   stdin.pause();
   stdout.write('\x1b[?25h\x1b[?1049l'); // Restore cursor and previous screen.
@@ -78,3 +103,4 @@ stdin.on('data', (key) => {
 
 stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J\x1b[H');
 render();
+gravity = setInterval(tick, 700);
