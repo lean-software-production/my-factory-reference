@@ -2,7 +2,7 @@
 - [x] Draw a bordered, correctly sized Tetris board in the terminal
 - [x] Add the seven tetromino shapes and spawn pieces on the board
 - [x] Implement left, right, and down movement with collision checks
-- [ ] Implement piece rotation while keeping pieces within valid board positions
+- [x] Implement piece rotation while keeping pieces within valid board positions
 - [ ] Add automatic piece falling and lock pieces when they land
 - [ ] Clear completed lines and display the current score
 - [ ] Add hard drop and increase the fall speed as the game progresses
