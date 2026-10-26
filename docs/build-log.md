@@ -1227,3 +1227,63 @@ Things to note:
 - The starter's bridge says in its opening comment that "homework 8's
   `run_command` tool" doesn't reach pi; its README says homework 9. Left
   alone.
+
+## Beyond the homeworks: watch and --version
+
+Not a homework: no iteration was fetched, and `factory/ITERATION` and
+`factory/spec/` are as homework 8 left them. This makes `watch` look good
+for a student's first ride on the finished factory, and gives the release
+binary a version.
+
+- **`watch` on a terminal** (`internal/watch`: `style.go`, `progress.go`,
+  and `watch.go`). A `Watcher` styles its output only when it writes to a
+  terminal (`golang.org/x/term`'s `IsTerminal`) and `NO_COLOR` is unset (and
+  `TERM` isn't `dumb`). Otherwise the output is exactly homework 7's plain
+  lines, with no escape and no `\r`, which is what the feature suite sees.
+  - Each machine has a colour from a palette of six, in order of first
+    appearance, kept for the run; names are padded to the longest machine
+    name (the line's machine folders tell `watch` the names up front, so
+    the column doesn't move mid-run; plain output widens the same way for
+    a name over 10 characters, such as `synthesiser`).
+  - A pinned bottom line, `▶ <line>  task <done>/<total>  <bar>  <elapsed>`,
+    is wiped before each line and drawn again after it. The bar is 16 cells
+    of `█` and `░`, `done * 16 / total` filled (5/12 is 6 cells). Without a
+    valid `progress` it reads `▶ <line>  <elapsed>`. The clock ticks while
+    nothing happens (`(*Watcher).Tick`, called by `follow` while it waits
+    for the record to grow), and the line is cut to the terminal's width so
+    it can't wrap. When the run ends the pinned line is replaced by
+    `run tetris finished (6m 40s)`.
+  - Token lines are dimmed, `running` lines are dim with the names in their
+    colours, and a `told` line has a bold `told` and the machine in its
+    colour.
+  - `progress` in a result is `{"done": <int>, "total": <int>}`. A missing
+    one, a non-object, a `total` of 0 or less, or values that aren't
+    numbers are dropped (the last good progress stays); a `done` past
+    `total`, or below 0, is held to 0 to `total`. In plain mode a change of
+    progress prints as a line of its own: `progress   task 5/12  ██████░░░░░░░░░░`.
+- **`factory --version`** prints `factory <version>` and exits 0. The
+  version is `main.version`, set by `-ldflags "-X main.version=2026.11.03"`
+  and `dev` otherwise. `-version` works too.
+- **Fixed, from homework 7's deferred findings:** `Count` showed 999,950 as
+  `1000.0k`. It now moves up a unit before it would round to a thousand
+  (`1.0M`, and `G` after that). Its other outputs are unchanged.
+- **Tests:** `internal/watch/render_test.go`: `TestWatchPlainWhenNotATerminal`,
+  `TestNoColorMakesATerminalPlain` (a real pty), `TestProgressBarToleratesBadValues`,
+  `TestProgressIsClamped`, `TestProgressBarCounts`, `TestPinnedLineStaysAtTheBottom`,
+  `TestPinnedLineIsCutToTheTerminal`, `TestTickRedrawsTheClock`,
+  `TestMachinesHaveStableColours`, `TestLongMachineNamesWidenTheColumn`,
+  `TestNamedMachinesFixTheColumnFromTheStart`,
+  `TestTerminalLooksRightForTokensToldAndTheEnd`,
+  `TestElapsedIsShownInMinutesAndSeconds` and
+  `TestCountChangesUnitBeforeItReachesAThousand`;
+  `cmd/factory/version_test.go`: `TestVersionFlag`,
+  `TestVersionOfADevelopmentBuild`.
+- **Green:** the default suite passes whole: 93 of 93 examples, with every
+  `watch` step unchanged (`logs/009-default.log`). No daemon, `pi-rpc-acp`
+  or double was left running.
+- **By hand, in a pty** (`script -qc ... /dev/null`), with the agent double
+  behind a small proxy that makes the planner report `progress`: the
+  `careful` line with three tasks, and `three-big-brains`. The pinned line
+  advanced `task 0/3` to `task 3/3` with its clock, the three reviewers got
+  three colours, and piped to a file the same record printed plain lines.
+  The proxy is a scratch tool and isn't in the repository.

@@ -37,7 +37,9 @@ func watchCommand(args []string) error {
 	}
 	f := runFolder{target: i.target, name: i.run, settings: settings{Line: line},
 		dir: filepath.Join(i.target, linesFolder, line, "runs", i.run)}
-	last, err := follow(f, watch.New(os.Stdout, line))
+	w := watch.New(os.Stdout, line)
+	w.Names(machineNames(filepath.Join(i.target, linesFolder, line))...)
+	last, err := follow(f, w)
 	if err != nil {
 		return err
 	}
@@ -103,6 +105,9 @@ func follow(f runFolder, w *watch.Watcher) (watch.Event, error) {
 				continue
 			}
 		}
+		if err := w.Tick(time.Now()); err != nil {
+			return last, err
+		}
 		time.Sleep(pollEvery)
 	}
 }
@@ -111,4 +116,15 @@ func follow(f runFolder, w *watch.Watcher) (watch.Event, error) {
 func (f runFolder) isRunning() bool {
 	rep, err := call(request{Op: "status"}, false)
 	return err == nil && rep.Run == f.name && rep.Target == f.target
+}
+
+// machineNames are the names of the machines of the assembly line in the
+// folder, or none if they cannot be read.
+func machineNames(lineDir string) []string {
+	entries, _ := os.ReadDir(filepath.Join(lineDir, "machines"))
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
 }

@@ -24,6 +24,7 @@
 //	factory stop <name> --target <folder>
 //	factory stop
 //	factory status
+//	factory --version
 package main
 
 import (
@@ -46,6 +47,10 @@ func main() {
 
 // command runs the command the arguments name, and is its exit status.
 func command(args []string) int {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
+		fmt.Println("factory", version)
+		return 0
+	}
 	commands := map[string]func([]string) error{
 		"watch":  watchCommand,
 		"say":    sayCommand,

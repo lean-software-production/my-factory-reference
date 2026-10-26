@@ -67,45 +67,91 @@ func (ev Event) Ended() bool {
 	return ev.Kind == Run && ev.State != Started
 }
 
-// A Watcher renders the events of one run's record, in order, as plain
-// lines. It keeps what it needs across events: which machines are running
-// and what each has spent.
+// A Watcher renders the events of one run's record, in order. It keeps
+// what it needs across events: which machines are running, what each has
+// spent, how far the run has got and for how long it has gone.
+//
+// Written to a terminal, it styles what it shows: a colour for each
+// machine, and a line pinned at the bottom with the line, the run's
+// progress and its clock. Written anywhere else, or with NO_COLOR set, it
+// writes plain lines and nothing else, with no escapes.
 type Watcher struct {
-	w    io.Writer
-	line string // the assembly line the run executes
+	w      io.Writer
+	line   string // the assembly line the run executes
+	styled bool   // writing to a terminal, to be styled
+	cols   func() int
 
 	running   []string
 	spent     map[string]*tokens // by machine
 	bills     map[string]int     // tokens in and out, by provider
 	providers []string           // in the order they first spend
 	total     int
+
+	colours map[string]string // each machine's colour
+	width   int               // the widest a machine's name has been
+
+	progress progress // how far the run has got, if it has said
+	said     bool     // whether it has
+
+	start, now time.Time // when the run started, and the latest time known
+	live       bool      // the run is going, and its pinned line is wanted
+	pinned     bool      // the pinned line is on the screen
+	drawn      int       // the seconds of the clock it shows
 }
 
 type tokens struct{ in, out int }
 
 // New is a Watcher that writes to w, for a run on the line.
 func New(w io.Writer, line string) *Watcher {
-	return &Watcher{w: w, line: line, spent: map[string]*tokens{}, bills: map[string]int{}}
+	wt := &Watcher{w: w, line: line, width: labelWidth,
+		spent: map[string]*tokens{}, bills: map[string]int{}, colours: map[string]string{}}
+	wt.styled, wt.cols = terminalOf(w)
+	return wt
 }
 
-// labelWidth is how wide the column of machine names is.
+// Names tells the watcher the machines the run may call on, so that the
+// column of names is wide enough for the longest from the first line on.
+func (wt *Watcher) Names(machines ...string) {
+	for _, m := range machines {
+		wt.width = max(wt.width, len(m))
+	}
+}
+
+// labelWidth is how wide the column of machine names is, at least.
 const labelWidth = 10
 
 // Render shows what the event changes.
 func (wt *Watcher) Render(ev Event) error {
+	if !ev.Time.IsZero() {
+		wt.now = ev.Time
+		if wt.start.IsZero() {
+			wt.start = ev.Time
+		}
+	}
+	if ev.Machine != "" {
+		wt.width = max(wt.width, len(ev.Machine))
+	}
 	switch ev.Kind {
 	case Run:
 		switch ev.State {
 		case Started:
 			// Whatever was running before, it is not running now.
 			wt.running = nil
-			return wt.printf("run %s started, on the %s line\n", ev.Run, wt.line)
+			wt.live = true
+			if !ev.Time.IsZero() {
+				wt.start = ev.Time
+			}
+			text := fmt.Sprintf("run %s started, on the %s line", ev.Run, wt.line)
+			return wt.show(text, bold+text+reset)
 		case Failed:
-			return wt.printf("run %s failed: %s\n", ev.Run, ev.Error)
+			return wt.ended(ev, fmt.Sprintf("run %s failed: %s", ev.Run, ev.Error), red)
+		case Finished:
+			return wt.ended(ev, fmt.Sprintf("run %s %s", ev.Run, ev.State), green)
 		default:
-			return wt.printf("run %s %s\n", ev.Run, ev.State)
+			return wt.ended(ev, fmt.Sprintf("run %s %s", ev.Run, ev.State), yellow)
 		}
 	case Start:
+		wt.live = true
 		if !slices.Contains(wt.running, ev.Machine) {
 			wt.running = append(wt.running, ev.Machine)
 		}
@@ -117,18 +163,69 @@ func (wt *Watcher) Render(ev Event) error {
 		}
 		return wt.showRunning()
 	case Text:
-		return wt.printf("%-*s | %s\n", labelWidth, ev.Machine, ev.Text)
+		return wt.show(
+			fmt.Sprintf("%-*s | %s", wt.width, ev.Machine, ev.Text),
+			wt.label(ev.Machine)+" | "+ev.Text)
+	case Result:
+		// The result is already shown, as the line of text it is. What it
+		// says of progress is shown as well.
+		return wt.showProgress(ev)
 	case Usage:
 		return wt.spend(ev)
 	case Told:
-		return wt.printf("%-*s %s: %s\n", labelWidth, "told", ev.Machine, ev.Text)
+		return wt.show(
+			fmt.Sprintf("%-*s %s: %s", wt.width, "told", ev.Machine, ev.Text),
+			fmt.Sprintf("%s%-*s%s %s: %s", bold, wt.width, "told", reset, wt.name(ev.Machine), ev.Text))
 	}
-	// A result is already shown, as the line of text it is.
 	return nil
 }
 
+// Tick tells the watcher the time now, so that the clock on the pinned line
+// goes on while nothing happens. It writes nothing unless a second has
+// passed, and nothing at all when the output is plain.
+func (wt *Watcher) Tick(now time.Time) error {
+	if !wt.styled || !wt.live || wt.start.IsZero() {
+		return nil
+	}
+	wt.now = now
+	if wt.seconds() == wt.drawn && wt.pinned {
+		return nil
+	}
+	return wt.write(wt.unpin() + wt.pin())
+}
+
+// ended shows the run ending, and, on a terminal, how long it took, in
+// place of the pinned line.
+func (wt *Watcher) ended(ev Event, text, colour string) error {
+	wt.live = false
+	return wt.show(text, colour+text+reset+dim+" ("+elapsed(wt.now.Sub(wt.start))+")"+reset)
+}
+
 func (wt *Watcher) showRunning() error {
-	return wt.printf("%-*s %s\n", labelWidth, "running", strings.Join(wt.running, ", "))
+	names := make([]string, len(wt.running))
+	for i, m := range wt.running {
+		names[i] = wt.name(m)
+	}
+	return wt.show(
+		fmt.Sprintf("%-*s %s", wt.width, "running", strings.Join(wt.running, ", ")),
+		fmt.Sprintf("%s%-*s%s %s", dim, wt.width, "running", reset, strings.Join(names, ", ")))
+}
+
+// showProgress shows the progress a result reports, if it reports any that
+// is different from what was said last: in the pinned line on a terminal,
+// and as a line of its own otherwise. What it says that is not sensible is
+// ignored.
+func (wt *Watcher) showProgress(ev Event) error {
+	p, ok := parseProgress(ev.Result["progress"])
+	if !ok || (wt.said && p == wt.progress) {
+		return nil
+	}
+	wt.progress, wt.said = p, true
+	if wt.styled {
+		return wt.write(wt.unpin() + wt.pin())
+	}
+	text := fmt.Sprintf("%-*s %s  %s", wt.width, "progress", p, p.bar())
+	return wt.show(text, text)
 }
 
 // spend adds what a turn spent to its machine's, its provider's and the
@@ -148,27 +245,26 @@ func (wt *Watcher) spend(ev Event) error {
 	wt.total += ev.InputTokens + ev.OutputTokens
 
 	var line strings.Builder
-	fmt.Fprintf(&line, "%-*s %s %s in / %s out", labelWidth, "tokens", ev.Machine, Count(t.in), Count(t.out))
+	fmt.Fprintf(&line, "%-*s %s %s in / %s out", wt.width, "tokens", ev.Machine, Count(t.in), Count(t.out))
 	for _, provider := range wt.providers {
 		fmt.Fprintf(&line, "   %s %s", provider, Count(wt.bills[provider]))
 	}
-	fmt.Fprintf(&line, "   run %s\n", Count(wt.total))
-	return wt.printf("%s", line.String())
+	fmt.Fprintf(&line, "   run %s", Count(wt.total))
+	return wt.show(line.String(), dim+line.String()+reset)
 }
 
-func (wt *Watcher) printf(format string, args ...any) error {
-	_, err := fmt.Fprintf(wt.w, format, args...)
-	return err
-}
-
-// Count is a number of tokens, short: 950, 12.4k, 3.1M.
+// Count is a number of tokens, short: 950, 12.4k, 3.1M. It moves up to the
+// next unit once it would round to a thousand of the one it is in.
 func Count(n int) string {
-	switch {
-	case n < 1000:
+	if n < 1000 {
 		return fmt.Sprint(n)
-	case n < 1_000_000:
-		return fmt.Sprintf("%.1fk", float64(n)/1000)
-	default:
-		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 	}
+	unit := 1000.0
+	for _, suffix := range []string{"k", "M", "G"} {
+		if v := float64(n) / unit; v < 999.95 || suffix == "G" {
+			return fmt.Sprintf("%.1f%s", v, suffix)
+		}
+		unit *= 1000
+	}
+	return fmt.Sprint(n)
 }
