@@ -1,4 +1,4 @@
-- [ ] Set up an npm project whose `npm start` launches a terminal program and shows an initial screen.
+- [x] Set up an npm project whose `npm start` launches a terminal program and shows an initial screen.
 - [ ] Render a bordered 10×20 playfield with score and controls, keeping the entire display within 24 rows.
 - [ ] Define the seven tetromino shapes and spawn and display a falling piece on the board.
 - [ ] Add a timed gravity loop that moves the active piece down and locks it on collision.
