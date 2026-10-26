@@ -1703,3 +1703,11 @@ Ralph's `AGENTS.md` keeps its `# Doer` heading: it says what the machine is
 for, and the factory finds every role from the graph, never from a name. The
 planner's instructions now speak of ralph. Earlier sections of this log, and
 the ride targets already made, keep the old names.
+
+## The ride's line defaults to gpt-6.1-sol
+
+David chose `openai-codex/gpt-6.1-sol` as the default for both machines on
+`implement-with-ralph-loop` on 2026-10-26, matching the starter's Codex
+default (my-factory-starter#17). The 7-minute ride and the model comparison
+above were measured on `gpt-6-sol`; the next release's ride measures the new
+default.
