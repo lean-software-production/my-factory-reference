@@ -2,22 +2,39 @@ const readline = require('node:readline');
 const { render } = require('./render');
 const { createGame, move, rotate, tick, hardDrop } = require('./game');
 
-const game = createGame();
+let game = createGame();
+const interactive = process.stdin.isTTY && process.stdout.isTTY;
 function draw() {
-  if (process.stdout.isTTY) process.stdout.write('\x1b[H');
+  if (interactive) process.stdout.write('\x1b[H\x1b[J');
   process.stdout.write(render(game.board, game.score, game.piece, game.gameOver) + '\n');
 }
 
-if (process.stdout.isTTY) process.stdout.write('\x1b[2J');
-draw();
-if (process.stdin.isTTY && process.stdout.isTTY) {
+if (interactive) {
+  const wasRaw = process.stdin.isRaw;
+  let cleaned = false;
+  function cleanup() {
+    if (cleaned) return;
+    cleaned = true;
+    process.stdin.setRawMode(Boolean(wasRaw));
+    process.stdin.pause();
+    process.stdout.write('\x1b[?25h\x1b[?1049l');
+  }
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => process.exit(130));
+  process.on('SIGTERM', () => process.exit(143));
+  process.stdout.write('\x1b[?1049h\x1b[?25l');
   readline.emitKeypressEvents(process.stdin);
   process.stdin.setRawMode(true);
   process.stdin.resume();
-  process.on('exit', () => process.stdin.setRawMode(false));
+  draw();
   process.stdin.on('keypress', (_, key) => {
-    if (key.ctrl && key.name === 'c') {
+    if ((key.ctrl && key.name === 'c') || key.name === 'q') {
       process.exit();
+      return;
+    }
+    if (key.name === 'r') {
+      game = createGame();
+      draw();
       return;
     }
     if (game.gameOver) return;
@@ -37,4 +54,6 @@ if (process.stdin.isTTY && process.stdout.isTTY) {
       draw();
     }
   }, 750);
+} else {
+  draw();
 }
