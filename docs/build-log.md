@@ -1578,3 +1578,28 @@ No `homework-*` tag and not the `2026.10.26` tag were moved, and
     came in with `TestWatchEndedEarlyLeavesNoPinnedLine` in "watch and
     --version" and is fixed here.
   - Homework 008's 33 stale daemons' folders were 32.
+- **Rebuilt and ridden again: `2026.10.26.1`.** `bin/release 2026.10.26.1`
+  on `920fc19`, the tree clean, built the three binaries and tagged it
+  (`logs/final-fix-release.log`; `sha256sum -c SHA256SUMS` OK, `file`
+  static ELF for both Linux builds, `--version` prints `factory
+  2026.10.26.1`). It printed the `gh release create` command, now with
+  `--target main` and both arm64 builds named untested; it was not run.
+  Then `FACTORY_BIN=dist/2026.10.26.1/factory-2026.10.26.1-linux-amd64
+  bin/ride tetris/release-ride-2 --run ride` on a fresh target, with `watch
+  ride` (the release binary too) logging to `logs/final-ride-watch.log`.
+  - **It finished in one go**: 04:39:53 to 04:47:13 UTC, **7m 20s** wall
+    time, `task 10/10` and `run ride finished`, 21 machine turns (11
+    planner, 10 doer). **145.9k tokens** by `watch`'s run total (in + out,
+    cache not counted). Every one of the 21 results was on a line of its
+    own after a blank line, so the lenient read was not needed this time.
+  - **What it made**: 216 lines of JS in `src/` (`game.js`, `index.js`,
+    `pieces.js`, `render.js`), a README, and 6 tests under `node --test`,
+    all passing. `play.py` (left, left, up, space, right, down, then `q`):
+    17 frames, at most 22 rows, cursor hidden and restored, `q` exits with
+    status 0. Unlike `release-ride` it draws on the main screen, not the
+    alternate one (the spec doesn't ask for either). Playable by that
+    check; not played by hand. Start it with `npm --prefix
+    tetris/release-ride-2 start`.
+  - **Cleanup**: `factory stop` stopped the daemon; `pgrep` found no
+    daemon, `pi-rpc-acp`, `pi` or harness after. The line's copy in the
+    target is committed, as `release-ride`'s is (the logins are ignored).
