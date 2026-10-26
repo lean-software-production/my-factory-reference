@@ -1,5 +1,6 @@
 const readline = require('node:readline');
-const { render } = require('./render');
+const { render, WIDTH, HEIGHT } = require('./render');
+const { spawnPiece } = require('./pieces');
 
 const input = process.stdin;
 const output = process.stdout;
@@ -35,5 +36,7 @@ if (!input.isTTY || !output.isTTY) {
   });
 
   output.write('\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J'); // Alternate screen, hide cursor.
-  output.write(render());
+  const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(0));
+  const active = spawnPiece(WIDTH);
+  output.write(render(board, { active }));
 }

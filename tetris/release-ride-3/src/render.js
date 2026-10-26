@@ -3,12 +3,14 @@ const HEIGHT = 20;
 
 // Keep the entire screen at 24 rows: header, border, 20 cells, border, footer.
 function render(board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(0)),
-                { score = 0, lines = 0, gameOver = false } = {}) {
+                { score = 0, lines = 0, gameOver = false, active = null } = {}) {
   const border = `+${'-'.repeat(WIDTH * 2)}+`;
   const rows = [
     `TETRIS  Score: ${score}  Lines: ${lines}`,
     border,
-    ...board.map(row => `|${row.map(cell => cell ? '[]' : '  ').join('')}|`),
+    ...board.map((row, y) => `|${row.map((cell, x) =>
+      cell || (active && active.cells.some(([px, py]) => active.x + px === x && active.y + py === y))
+        ? '[]' : '  ').join('')}|`),
     border,
     gameOver ? 'GAME OVER  R Restart  Q Quit' : '←→ Move  ↓ Soft  ↑ Turn  Space Hard  R Restart  Q Quit',
   ];
