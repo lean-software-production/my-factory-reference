@@ -5,6 +5,7 @@ function createGame() {
   return {
     board: Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(null)),
     piece: randomPiece(BOARD_WIDTH),
+    nextPiece: randomPiece(BOARD_WIDTH),
     score: 0,
     gameOver: false,
   };
@@ -64,8 +65,18 @@ function tick(game) {
   }
   const cleared = clearLines(game.board);
   game.score += [0, 100, 300, 500, 800][cleared];
-  game.piece = randomPiece(BOARD_WIDTH);
+  game.piece = game.nextPiece;
+  game.nextPiece = randomPiece(BOARD_WIDTH);
   if (!canPlace(game.board, game.piece)) game.gameOver = true;
 }
 
-module.exports = { createGame, canPlace, move, rotate, clearLines, tick };
+function hardDrop(game) {
+  if (game.gameOver) return false;
+  while (canPlace(game.board, game.piece, game.piece.x, game.piece.y + 1)) {
+    game.piece.y++;
+  }
+  tick(game);
+  return true;
+}
+
+module.exports = { createGame, canPlace, move, rotate, clearLines, tick, hardDrop };
