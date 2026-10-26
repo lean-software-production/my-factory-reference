@@ -1733,13 +1733,18 @@ is OK for all three binaries, and `factory-2026.10.26.2-linux-amd64 --version` p
 with `bin/use-reference-factory`, in `/home/ensembleworks-agent/builds/2026.10.26.2`
 (outside this repository), on `openai-codex/gpt-6.1-sol` for both machines.
 
-- **Time:** 14m 59s for the run that finished, which was a resume. The first
-  attempt failed after 2m 35s (round 2: "the ralph (pi-rpc-acp) ended its turn
-  having generated nothing"), so the whole took about 17m 34s of factory time.
-  Starting the script again with the same target and run name began the run
-  again from round 1 rather than from round 2, and its counters began at 0.
-- **Tokens:** 252.5k for the finished run (planner 92.9k, ralph 159.6k, 12
-  rounds), plus 14.2k spent in the failed attempt: about 266.7k in all.
+- **Time:** 25m 09s of wall clock, 12:25:13 to 12:50:22. The first attempt
+  failed after 2m 35s, on the second ralph turn ("the ralph (pi-rpc-acp) ended
+  its turn having generated nothing"). The script was started again 7m 34s later
+  with the same target and run name, and the run resumed after task 1: it kept
+  the plan and task 1 (commit 9f43bdd), and its first ralph turn did task 2. The
+  resume took 14m 59s and covers tasks 2 to 10.
+- **Tokens:** about 252.5k in all, summed from the `usage` events in
+  `record.jsonl`: 14.2k in the first attempt and 238.4k in the resume
+  (planner 85.7k, ralph 152.6k). The status bar's 252.5k (planner 92.9k, ralph
+  159.6k) and its round 12 cover both attempts, because `watch` totals the
+  whole record. The first attempt had 2 planner turns and the resume 10 planner
+  and 9 ralph turns.
 - **Playable:** yes. `python3 -I .../ride-check/play.py` drew the board and the
   pieces, entered and restored the alternate screen, and quit on `q` with
   status 0. `npm test` in the build passes 46 of 46.
