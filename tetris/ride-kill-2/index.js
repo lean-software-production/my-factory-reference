@@ -24,6 +24,7 @@ function spawnPiece() {
 }
 let active = spawnPiece();
 let score = 0;
+let gameOver = false;
 
 function canPlace(piece, x, y) {
   return piece.shape.cells.every((row, dy) => row.every((filled, dx) => {
@@ -60,8 +61,11 @@ function lockPiece() {
     }
   }
   score += [0, 100, 300, 500, 800][cleared];
-  // Spawning the next piece is added in a later step.
-  active = null;
+  active = spawnPiece();
+  if (!canPlace(active, active.x, active.y)) {
+    active = null;
+    gameOver = true;
+  }
 }
 
 function tick() {
@@ -92,7 +96,8 @@ function render() {
   stdout.write('\x1b[H' + [
     border, ...rows, border,
     `TETRIS  Score: ${score}`,
-    'Arrows: move/rotate/drop  Space: hard drop  q: quit'
+    gameOver ? 'GAME OVER  Press q to quit' :
+      'Arrows: move/rotate/drop  Space: hard drop  q: quit'
   ].join('\n'));
 }
 
