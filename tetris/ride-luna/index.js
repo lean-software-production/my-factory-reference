@@ -4,8 +4,13 @@
 const clear = '\x1b[2J\x1b[H';
 const reset = '\x1b[0m';
 
-function render() {
-  process.stdout.write(`${clear}TETRIS\n\nTerminal Tetris\n\nPress q to quit.\n`);
+const BOARD_WIDTH = 10;
+const BOARD_HEIGHT = 20;
+
+function render(board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(false))) {
+  const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
+  const rows = board.map((row) => `|${row.map((cell) => cell ? '[]' : '  ').join('')}|`);
+  process.stdout.write(`${clear}TETRIS\n${border}\n${rows.join('\n')}\n${border}\n`);
 }
 
 function start() {
@@ -33,4 +38,4 @@ function start() {
 
 if (require.main === module) start();
 
-module.exports = { render, start };
+module.exports = { BOARD_WIDTH, BOARD_HEIGHT, render, start };
