@@ -120,7 +120,7 @@ function initialScreen() {
 
 function render(state) {
   const screen = state?.active
-    ? renderBoard(state.board, state.piece) + `\nScore: ${state.score || 0}  Lines: ${state.lines || 0}  Level: ${state.level || 1}` + (state.gameOver ? '\nGAME OVER' : '\nTerminal Tetris')
+    ? renderBoard(state.board, state.piece) + `\nScore: ${state.score || 0}  Lines: ${state.lines || 0}  Level: ${state.level || 1}` + (state.gameOver ? '\nGAME OVER · Press R to restart or Q to quit' : '\nTerminal Tetris')
     : initialScreen();
   process.stdout.write('\x1b[2J\x1b[H' + screen + '\n');
 }
@@ -138,6 +138,13 @@ function main() {
       process.stdin.setRawMode(false);
       process.stdin.pause();
       process.exit(0);
+    }
+    if (state.gameOver) {
+      if (key.toLowerCase() === 'r') {
+        Object.assign(state, { board: emptyBoard(), piece: null, nextType: 'T', active: false, gameOver: false, score: 0, lines: 0, level: 1 });
+      }
+      render(state);
+      return;
     }
     if (!state.active) {
       state.active = true;
