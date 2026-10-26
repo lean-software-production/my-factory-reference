@@ -1,7 +1,7 @@
 const readline = require('node:readline');
 const { render, WIDTH } = require('./render');
 const { spawnPiece } = require('./pieces');
-const { createBoard, move, rotate, hardDrop, step } = require('./game');
+const { createBoard, move, rotate, hardDrop, step, clearLines } = require('./game');
 
 const input = process.stdin;
 const output = process.stdout;
@@ -37,13 +37,21 @@ if (!input.isTTY || !output.isTTY) {
   output.write('\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J'); // Alternate screen, hide cursor.
   const board = createBoard();
   let active = spawnPiece(WIDTH);
+  let score = 0;
+  let lines = 0;
   function draw() {
-    output.write('\x1b[H' + render(board, { active }));
+    output.write('\x1b[H' + render(board, { active, score, lines }));
+  }
+  function afterLock() {
+    const cleared = clearLines(board);
+    lines += cleared;
+    score += 100 * cleared * cleared;
+    clearInterval(timer);
   }
   function fall() {
     active = step(board, active);
+    if (!active) afterLock();
     draw();
-    if (!active) clearInterval(timer);
   }
   input.on('keypress', (_character, key) => {
     if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) return quit();
@@ -54,7 +62,7 @@ if (!input.isTTY || !output.isTTY) {
     else if (key?.name === 'up') rotate(board, active);
     else if (key?.name === 'space') {
       active = hardDrop(board, active);
-      clearInterval(timer);
+      afterLock();
     } else return;
     draw();
   });
