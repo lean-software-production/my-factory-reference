@@ -11,16 +11,18 @@ const state = { doc: null, t: 0, playing: false, speed: 10 };
 
 // Sizes, in the drawing's own units, before it is scaled to the page.
 const SIZE = {
-  boxH: 76, boxPad: 20, boxMinW: 110,    // machines
-  pillH: 50, pillPad: 24, pillMinW: 80,  // start and finish
-  rowStep: 120,                          // from one row's middle to the next
-  gapMin: 52,                            // between columns
+  boxH: 76, boxPad: 12, boxMinW: 96,     // machines, with a name on one line
+  nameLineH: 24,                         // each further line of a machine's name
+  wrapAt: 90,                            // a name wider than this goes on two lines
+  pillH: 50, pillPad: 16, pillMinW: 70,  // start and finish
+  rowGap: 44,                            // between the tallest boxes of two rows
+  gapMin: 44,                            // between columns
   portSide: 12,                          // how far a curving edge leaves a box's side off its middle
   portStep: 22,                          // between edges meeting a box's top or bottom
   arcBase: 44, arcStep: 28,              // how far an arc clears the boxes, and how much more per column
-  labelH: 24, labelPad: 6,
-  badgeR: 12,
-  margin: 20,                            // round the drawing, for the wobble
+  labelH: 26, labelPad: 3,
+  badgeR: 14,
+  margin: 10,                            // round the drawing, for the wobble
   maxScale: 1.4,                         // the most the drawing grows past its own size
 };
 
@@ -94,39 +96,54 @@ function cubicMid(p0, p1, p2, p3) {
 
 // ---------- layout: where the boxes go ----------
 
-// widestModels is the longest model line each machine ever shows, so that
-// its box needn't grow while the run plays.
-function widestModels(frames) {
-  const widest = {};
+// modelWidths is how wide the widest model line each machine ever shows
+// is drawn, so that its box needn't grow while the run plays.
+function modelWidths(svg, frames) {
+  const measured = new Map(), widest = {};
   for (const f of frames) {
     for (const [m, model] of Object.entries(f.models || {})) {
-      if (!widest[m] || model.length > widest[m].length) widest[m] = model;
+      if (!measured.has(model)) measured.set(model, textWidth(svg, 'model', model));
+      widest[m] = Math.max(widest[m] || 0, measured.get(model));
     }
   }
   return widest;
 }
 
-// boxSizes sizes each node's box to its name (with room for a ✓) and its
-// model line. Machines in one column share the widest width.
+// nameLines is a machine's name as it is drawn: on one line, or, when that
+// is wide, split at the space nearest its middle. The width leaves room
+// for a ✓ after the last line.
+function nameLines(svg, label) {
+  const one = { lines: [label], w: textWidth(svg, 'name', label + ' ✓') };
+  if (one.w <= SIZE.wrapAt || !label.includes(' ')) return one;
+  let cut = -1;
+  for (let i = 0; i < label.length; i++) {
+    if (label[i] === ' ' && (cut < 0 || Math.abs(i - label.length / 2) < Math.abs(cut - label.length / 2))) cut = i;
+  }
+  const lines = [label.slice(0, cut), label.slice(cut + 1)];
+  const w = Math.max(textWidth(svg, 'name', lines[0]), textWidth(svg, 'name', lines[1] + ' ✓'));
+  return w < one.w ? { lines, w } : one;
+}
+
+// boxSizes sizes each node's box to its name and its model line. Every
+// machine is as tall as the one with the most lines.
 function boxSizes(svg, doc) {
-  const models = widestModels(doc.frames);
+  const models = modelWidths(svg, doc.frames);
   const boxes = new Map();
   for (const n of doc.nodes) {
-    const machine = n.kind === 'machine';
-    let w;
-    if (machine) {
-      const name = textWidth(svg, 'name', n.label + ' ✓');
-      const model = models[n.name] ? textWidth(svg, 'model', models[n.name]) : 0;
-      w = Math.max(name, model) + 2 * SIZE.boxPad;
+    if (n.kind === 'machine') {
+      const name = nameLines(svg, n.label);
+      boxes.set(n.name, {
+        node: n,
+        lines: name.lines,
+        w: Math.max(name.w, models[n.name] || 0, SIZE.boxMinW - 2 * SIZE.boxPad) + 2 * SIZE.boxPad,
+      });
     } else {
-      w = textWidth(svg, 'pill', n.label) + 2 * SIZE.pillPad;
+      const w = textWidth(svg, 'pill', n.label) + 2 * SIZE.pillPad;
+      boxes.set(n.name, { node: n, lines: [n.label], w: Math.max(w, SIZE.pillMinW), h: SIZE.pillH });
     }
-    boxes.set(n.name, {
-      node: n,
-      w: Math.max(w, machine ? SIZE.boxMinW : SIZE.pillMinW),
-      h: machine ? SIZE.boxH : SIZE.pillH,
-    });
   }
+  const lines = Math.max(1, ...[...boxes.values()].filter(b => b.node.kind === 'machine').map(b => b.lines.length));
+  for (const b of boxes.values()) if (b.node.kind === 'machine') b.h = SIZE.boxH + (lines - 1) * SIZE.nameLineH;
   return boxes;
 }
 
@@ -145,14 +162,15 @@ function gapsBetween(svg, doc, boxes, columns) {
   for (const e of doc.edges) {
     const a = boxes.get(e.from), b = boxes.get(e.to);
     if (!a || !b || e.back || b.col - a.col !== 1 || !e.label) continue;
-    const need = textWidth(svg, 'elabel', e.label) + 2 * SIZE.labelPad + 12;
+    const need = textWidth(svg, 'elabel', e.label) + 2 * SIZE.labelPad + 4;
     gaps[a.col] = Math.max(gaps[a.col], need);
   }
   return gaps;
 }
 
 // layout places every box: columns by rank, left to right; rows by row, top
-// to bottom; each box in the middle of its column.
+// to bottom, far enough apart for the boxes; each box in the middle of its
+// column. Machines in one column share the widest width.
 function layout(svg, doc) {
   const boxes = boxSizes(svg, doc);
   const columns = columnsOf(boxes);
@@ -162,7 +180,8 @@ function layout(svg, doc) {
   const gaps = gapsBetween(svg, doc, boxes, columns);
   const lefts = [0];
   for (let c = 1; c < columns; c++) lefts[c] = lefts[c - 1] + widths[c - 1] + gaps[c - 1];
-  for (const b of boxes.values()) moveBox(b, lefts[b.col] + widths[b.col] / 2, b.node.row * SIZE.rowStep);
+  const rowStep = Math.max(...[...boxes.values()].map(b => b.h)) + SIZE.rowGap;
+  for (const b of boxes.values()) moveBox(b, lefts[b.col] + widths[b.col] / 2, b.node.row * rowStep);
   return boxes;
 }
 
@@ -277,14 +296,14 @@ function routesFor(doc, boxes, labelWidths) {
 }
 
 // labelPlace is where an edge's label and count badge go. Across a gap,
-// the label sits just above the line and the badge on it; on an arc, both
-// sit on the line, the badge after the label.
+// the label sits just above the line and the badge on it, nudged back off
+// the arrowhead; on an arc, both sit on the line, the badge after the label.
 function labelPlace(r) {
   const { x, y } = r.mid;
   const half = r.labelW ? r.labelW / 2 + SIZE.labelPad : 0;
   if (r.kind === 'side') {
     const ly = r.labelW ? y - SIZE.badgeR - SIZE.labelH / 2 : y;
-    return { lx: x, ly, bx: x, by: y, half };
+    return { lx: x, ly, bx: x - 5, by: y, half };
   }
   return { lx: x, ly: y, bx: r.labelW ? x + half + SIZE.badgeR - 2 : x, by: y, half };
 }
@@ -348,10 +367,16 @@ function drawNode(b, shapes, words) {
   const n = b.node, machine = n.kind === 'machine';
   const g = svgEl('g', { class: `node ${n.kind}`, 'data-name': n.name }, shapes);
   svgEl('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: machine ? 14 : b.h / 2 }, g);
-  const part = { node: n, g, name: null, model: null };
+  const part = { node: n, g, name: null, lastLine: '', model: null };
   if (machine) {
-    part.name = svgText(words, 'name', n.label, b.cx, b.cy - 3);
-    part.model = svgText(words, 'model', '', b.cx, b.cy + 23);
+    // The name's lines, then the model line, in the middle of the box.
+    let y = b.cy - ((b.lines.length - 1) * SIZE.nameLineH + 27) / 2 + 10.5;
+    b.lines.forEach((line, i) => {
+      part.name = svgText(words, 'name', line, b.cx, y);
+      if (i < b.lines.length - 1) y += SIZE.nameLineH;
+    });
+    part.lastLine = b.lines[b.lines.length - 1];
+    part.model = svgText(words, 'model', '', b.cx, y + 27);
     g.addEventListener('click', () => machineClicked(n.name, g));
   } else {
     part.name = svgText(words, `pill ${n.kind}`, n.label, b.cx, b.cy + 6);
@@ -373,7 +398,7 @@ function drawEdge(r, edges, labels) {
   }
   const badge = svgEl('g', { class: `badge${back}` }, labels);
   svgEl('circle', { cx: p.bx, cy: p.by, r: SIZE.badgeR }, badge);
-  const count = svgText(badge, 'count', '', p.bx, p.by + 5);
+  const count = svgText(badge, 'count', '', p.bx, p.by + 6);
   return { path, badge, count };
 }
 
@@ -396,7 +421,7 @@ function show(t) {
     if (part.node.kind === 'machine') {
       part.g.classList.toggle('working', working.has(name));
       part.g.classList.toggle('done', done.has(name));
-      part.name.textContent = part.node.label + (done.has(name) ? ' ✓' : '');
+      part.name.textContent = part.lastLine + (done.has(name) ? ' ✓' : '');
       part.model.textContent = (f.models && f.models[name]) || '';
     } else if (part.node.kind === 'finish') {
       part.g.classList.toggle('lit', f.finished);
