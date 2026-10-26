@@ -93,12 +93,12 @@ function render() {
     return cell || occupied ? '[]' : '  ';
   }).join('') + '|');
   // 22 board lines plus two status lines: exactly 24 terminal rows.
+  // Clear each line so a shorter game-over message never leaves old text behind.
   stdout.write('\x1b[H' + [
     border, ...rows, border,
-    `TETRIS  Score: ${score}`,
-    gameOver ? 'GAME OVER  Press q to quit' :
-      'Arrows: move/rotate/drop  Space: hard drop  q: quit'
-  ].join('\n'));
+    gameOver ? `GAME OVER  Score: ${score}` : `TETRIS  Score: ${score}`,
+    '←/→ move  ↑ rotate  ↓ drop  Space hard drop  q quit'
+  ].map(line => line + '\x1b[0K').join('\n'));
 }
 
 if (!stdin.isTTY || !stdout.isTTY) {
@@ -112,7 +112,7 @@ if (!stdin.isTTY || !stdout.isTTY) {
     clearInterval(gravity);
     stdin.setRawMode(false);
     stdin.pause();
-    stdout.write('\n');
+    stdout.write('\x1b[?25h\x1b[?1049l');
     process.exit(0);
   };
 
@@ -145,7 +145,7 @@ if (!stdin.isTTY || !stdout.isTTY) {
   process.on('SIGINT', close);
   process.on('SIGTERM', close);
 
-  stdout.write('\x1b[2J');
+  stdout.write('\x1b[?1049h\x1b[?25l\x1b[2J');
   render();
   gravity = setInterval(tick, 600);
 }
