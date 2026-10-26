@@ -26,6 +26,22 @@ function spawnPiece() {
 
 const settled = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(' '));
 let activePiece = spawnPiece();
+let linesCleared = 0;
+let score = 0;
+
+function clearLines() {
+  let cleared = 0;
+  for (let row = HEIGHT - 1; row >= 0; row--) {
+    if (settled[row].every((cell) => cell !== ' ')) {
+      settled.splice(row, 1);
+      settled.unshift(Array(WIDTH).fill(' '));
+      cleared++;
+      row++; // Recheck this row after the rows above fall into it.
+    }
+  }
+  linesCleared += cleared;
+  score += [0, 100, 300, 500, 800][cleared];
+}
 
 function canPlace(piece, x, y) {
   return piece.cells.every(([dx, dy]) => {
@@ -60,6 +76,7 @@ function tick() {
     for (const [dx, dy] of activePiece.cells) {
       settled[activePiece.y + dy][activePiece.x + dx] = activePiece.type;
     }
+    clearLines();
     const next = spawnPiece();
     activePiece = canPlace(next, next.x, next.y) ? next : null;
   }
@@ -74,8 +91,8 @@ function render() {
     }
   }
   const sidebar = [
-    'Score: 0',
-    'Lines: 0',
+    `Score: ${score}`,
+    `Lines: ${linesCleared}`,
     '',
     'Controls:',
     'Left/Right: Move',
