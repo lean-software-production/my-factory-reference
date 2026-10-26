@@ -6,5 +6,5 @@
 - [x] Clear completed lines and update the score shown in the display.
 - [x] Spawn successive pieces and show game over when a new piece cannot fit.
 - [x] Add restart and quit controls, including terminal cleanup on exit.
-- [ ] Keep the live display stable within 24 rows across play, scoring, and game over.
+- [x] Keep the live display stable within 24 rows across play, scoring, and game over.
 - [ ] Add automated checks for core game rules and document how to play.
