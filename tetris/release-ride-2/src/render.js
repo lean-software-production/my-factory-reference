@@ -2,11 +2,12 @@ const BOARD_WIDTH = 10;
 const BOARD_HEIGHT = 20;
 
 // The border and twenty board rows occupy 22 terminal rows in total.
-function render(board, score, piece = null) {
+function render(board, score, piece = null, gameOver = false) {
   const sidebar = {
     1: `Score: ${score}`,
     3: 'Controls:',
     4: 'Q  Quit',
+    6: gameOver ? 'Game over' : '',
   };
   const border = `+${'-'.repeat(BOARD_WIDTH * 2)}+`;
   const lines = [border];

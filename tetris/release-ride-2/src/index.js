@@ -1,6 +1,6 @@
 const readline = require('node:readline');
-const { BOARD_WIDTH, BOARD_HEIGHT, render } = require('./render');
-const { randomPiece } = require('./pieces');
+const { render } = require('./render');
+const { createGame, tick } = require('./game');
 
 function start() {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -12,10 +12,17 @@ function start() {
   const input = process.stdin;
   const output = process.stdout;
   let closed = false;
+  let timer;
+  const game = createGame();
+
+  function draw() {
+    output.write(`\x1b[H${render(game.board, game.score, game.gameOver ? null : game.piece, game.gameOver)}`);
+  }
 
   function close() {
     if (closed) return;
     closed = true;
+    clearInterval(timer);
     input.removeListener('keypress', onKey);
     process.removeListener('SIGINT', close);
     input.setRawMode(false);
@@ -32,9 +39,13 @@ function start() {
   input.resume();
   input.on('keypress', onKey);
   process.on('SIGINT', close);
-  const board = Array.from({ length: BOARD_HEIGHT }, () => Array(BOARD_WIDTH).fill(null));
-  const piece = randomPiece(BOARD_WIDTH);
-  output.write(`\x1b[?25l\x1b[2J\x1b[H${render(board, 0, piece)}`);
+  output.write('\x1b[?25l\x1b[2J');
+  draw();
+  timer = setInterval(() => {
+    tick(game);
+    draw();
+    if (game.gameOver) clearInterval(timer);
+  }, 700);
 }
 
 start();
