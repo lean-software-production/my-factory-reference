@@ -129,7 +129,11 @@ function render() {
   for (let y = 0; y < lines.length; y++) {
     if (panel[y]) lines[y] += `  ${panel[y]}`;
   }
-  stdout.write('\x1b[H' + lines.join('\r\n'));
+  // Clear each row before rewriting it: shorter scores and the disappearing
+  // game-over message must not leave characters from the previous frame.
+  // Leave one column unused so writing at the right edge cannot auto-wrap.
+  const maxColumns = Math.max(0, (stdout.columns || 80) - 1);
+  stdout.write('\x1b[H' + lines.map(line => '\x1b[2K' + Array.from(line).slice(0, maxColumns).join('')).join('\r\n'));
 }
 const stdin = process.stdin;
 const stdout = process.stdout;
@@ -163,6 +167,7 @@ const readline = require('node:readline');
 readline.emitKeypressEvents(stdin);
 stdin.setRawMode(true);
 stdin.resume();
+stdout.on('resize', render);
 stdin.on('keypress', (_, key) => {
   if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) close();
   else if (key?.name === 'r') restart();
