@@ -1,0 +1,10 @@
+- [ ] Set up the Node.js project so `npm start` launches a terminal game
+- [ ] Draw a bounded Tetris board and show the current score and controls
+- [ ] Add the seven tetromino shapes and spawn pieces at the top of the board
+- [ ] Implement left, right, and soft-drop keyboard controls
+- [ ] Add timed gravity and rotate pieces with collision-safe movement
+- [ ] Lock pieces when they land and spawn the next piece
+- [ ] Clear completed rows and award points
+- [ ] Detect game over and allow starting a new game
+- [ ] Keep all play, controls, and game-over display within 24 terminal rows
+- [ ] Add automated checks for core game rules and display height
