@@ -1,7 +1,7 @@
 const readline = require('node:readline');
 const { render, WIDTH } = require('./render');
 const { spawnPiece } = require('./pieces');
-const { createBoard, step } = require('./game');
+const { createBoard, move, step } = require('./game');
 
 const input = process.stdin;
 const output = process.stdout;
@@ -34,17 +34,27 @@ if (!input.isTTY || !output.isTTY) {
   readline.emitKeypressEvents(input);
   input.setRawMode(true);
   input.resume();
-  input.on('keypress', (_character, key) => {
-    if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) quit();
-  });
-
   output.write('\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J'); // Alternate screen, hide cursor.
   const board = createBoard();
   let active = spawnPiece(WIDTH);
-  output.write(render(board, { active }));
-  timer = setInterval(() => {
-    active = step(board, active);
+  function draw() {
     output.write('\x1b[H' + render(board, { active }));
+  }
+  function fall() {
+    active = step(board, active);
+    draw();
     if (!active) clearInterval(timer);
-  }, 700);
+  }
+  input.on('keypress', (_character, key) => {
+    if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) return quit();
+    if (!active) return;
+    if (key?.name === 'left') move(board, active, -1);
+    else if (key?.name === 'right') move(board, active, 1);
+    else if (key?.name === 'down') return fall();
+    else return;
+    draw();
+  });
+
+  draw();
+  timer = setInterval(fall, 700);
 }

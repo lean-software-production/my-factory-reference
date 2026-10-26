@@ -12,16 +12,20 @@ function canPlace(board, piece, x = piece.x, y = piece.y) {
   });
 }
 
+function move(board, piece, dx, dy = 0) {
+  if (!piece || !canPlace(board, piece, piece.x + dx, piece.y + dy)) return false;
+  piece.x += dx;
+  piece.y += dy;
+  return true;
+}
+
 function step(board, piece) {
   if (!piece) return null;
-  if (canPlace(board, piece, piece.x, piece.y + 1)) {
-    piece.y += 1;
-    return piece;
-  }
+  if (move(board, piece, 0, 1)) return piece;
   for (const [dx, dy] of piece.cells) {
     board[piece.y + dy][piece.x + dx] = piece.type;
   }
   return null;
 }
 
-module.exports = { createBoard, canPlace, step };
+module.exports = { createBoard, canPlace, move, step };
