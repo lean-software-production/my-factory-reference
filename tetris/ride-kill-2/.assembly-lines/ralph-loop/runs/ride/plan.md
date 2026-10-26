@@ -5,6 +5,6 @@
 - [x] Add keyboard controls for moving left and right, with collision checks against walls and locked blocks.
 - [x] Add rotation controls with collision handling so pieces cannot rotate into occupied or out-of-bounds cells.
 - [x] Add soft drop and hard drop controls that move and lock pieces correctly.
-- [ ] Clear completed rows and update the score when pieces lock.
+- [x] Clear completed rows and update the score when pieces lock.
 - [ ] Spawn successive pieces and implement game-over detection and an on-screen game-over message.
 - [ ] Polish terminal lifecycle and gameplay display: show controls and score throughout play, handle quit and cleanup, and verify all states fit within 24 rows.
