@@ -1,6 +1,7 @@
 const readline = require('node:readline');
-const { render, WIDTH, HEIGHT } = require('./render');
+const { render, WIDTH } = require('./render');
 const { spawnPiece } = require('./pieces');
+const { createBoard, step } = require('./game');
 
 const input = process.stdin;
 const output = process.stdout;
@@ -10,10 +11,12 @@ if (!input.isTTY || !output.isTTY) {
   process.exitCode = 1;
 } else {
   let closed = false;
+  let timer;
 
   function close() {
     if (closed) return;
     closed = true;
+    clearInterval(timer);
     input.setRawMode(false);
     input.pause();
     output.write('\x1b[?25h\x1b[?1049l'); // Show cursor and leave alternate screen.
@@ -36,7 +39,12 @@ if (!input.isTTY || !output.isTTY) {
   });
 
   output.write('\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J'); // Alternate screen, hide cursor.
-  const board = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(0));
-  const active = spawnPiece(WIDTH);
+  const board = createBoard();
+  let active = spawnPiece(WIDTH);
   output.write(render(board, { active }));
+  timer = setInterval(() => {
+    active = step(board, active);
+    output.write('\x1b[H' + render(board, { active }));
+    if (!active) clearInterval(timer);
+  }, 700);
 }
