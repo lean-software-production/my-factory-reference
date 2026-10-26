@@ -7,4 +7,4 @@
 - [x] Add soft drop and hard drop controls that move and lock pieces correctly.
 - [x] Clear completed rows and update the score when pieces lock.
 - [x] Spawn successive pieces and implement game-over detection and an on-screen game-over message.
-- [ ] Polish terminal lifecycle and gameplay display: show controls and score throughout play, handle quit and cleanup, and verify all states fit within 24 rows.
+- [x] Polish terminal lifecycle and gameplay display: show controls and score throughout play, handle quit and cleanup, and verify all states fit within 24 rows.
