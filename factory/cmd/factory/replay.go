@@ -260,8 +260,9 @@ type scene struct {
 // apply changes the scene as the event does, and says whether it changed
 // anything shown.
 //
-// A machine starting is working, and the planner starting begins a round,
-// with none done in it. A machine ending its turn is no longer working, and
+// A machine starting is working, and not done, even if it was done earlier
+// in the round: done means done this round and not working now. The planner
+// starting begins a round, with none done in it. A machine ending its turn is no longer working, and
 // is done in this round unless its turn failed. What it spends is counted,
 // and the model it spent on shown. The run ending, however it ends, leaves
 // none working.
@@ -272,6 +273,7 @@ func (s *scene) apply(ev watch.Event) bool {
 			s.round++
 			s.done = nil
 		}
+		s.done = slices.DeleteFunc(s.done, func(m string) bool { return m == ev.Machine })
 		if !slices.Contains(s.working, ev.Machine) {
 			s.working = append(s.working, ev.Machine)
 		}

@@ -18,6 +18,14 @@ const demoGraph = "../../../demo/efficient/.assembly-lines/efficient/assembly-li
 const rideRecord = "../../../tetris/release-ride/.assembly-lines/ralph-loop/runs/ride/record.jsonl"
 const rideGraph = "../../../tetris/release-ride/.assembly-lines/ralph-loop/assembly-line.dot"
 
+// realRuns are the records of finished runs in the repository, and their lines.
+var realRuns = []struct{ record, graph string }{
+	{demoRecord, demoGraph},
+	{rideRecord, rideGraph},
+	{"../../../tetris/release-ride-2/.assembly-lines/ralph-loop/runs/ride/record.jsonl", "../../../tetris/release-ride-2/.assembly-lines/ralph-loop/assembly-line.dot"},
+	{"../../../tetris/release-ride-3/.assembly-lines/ralph-loop/runs/ride/record.jsonl", "../../../tetris/release-ride-3/.assembly-lines/ralph-loop/assembly-line.dot"},
+}
+
 // eventsIn reads a run's record, one event a line.
 func eventsIn(t *testing.T, path string) []watch.Event {
 	t.Helper()
@@ -128,9 +136,34 @@ func TestAnErrorEndsATurnWithoutAHandOff(t *testing.T) {
 	if f := frameAt(d, 287.0); !slices.Contains(f.Working, "planner") {
 		t.Fatalf("the planner isn't working before the stop: working %v", f.Working)
 	}
+	if len(d.Breaks) != 1 {
+		t.Fatalf("the breaks are %+v, not one", d.Breaks)
+	}
 	f := frameAt(d, d.Breaks[0].At)
 	if slices.Contains(f.Working, "planner") || slices.Contains(f.Done, "planner") {
 		t.Errorf("the planner is still shown: working %v, done %v", f.Working, f.Done)
+	}
+}
+
+func TestAMachineStartingAgainIsNoLongerDone(t *testing.T) {
+	// The validator sends the work back, and the doer starts again in the
+	// same round, at 1504.99s.
+	d := replayOf(t, demoRecord, demoGraph)
+	f := frameAt(d, 1504.99+0.5)
+	if !slices.Contains(f.Working, "doer") || slices.Contains(f.Done, "doer") {
+		t.Errorf("at the doer's retry, working are %v and done %v: the doer should be working and not done", f.Working, f.Done)
+	}
+}
+
+func TestNoMachineIsWorkingAndDoneAtOnce(t *testing.T) {
+	for _, run := range realRuns {
+		for i, f := range replayOf(t, run.record, run.graph).Frames {
+			for _, m := range f.Working {
+				if slices.Contains(f.Done, m) {
+					t.Errorf("%s: frame %d at %.3fs has %s both working and done", run.record, i, f.At, m)
+				}
+			}
+		}
 	}
 }
 
@@ -167,12 +200,7 @@ func TestRoundsCarryOnAcrossAResume(t *testing.T) {
 }
 
 func TestFramesStartAtZeroAndNeverGoBack(t *testing.T) {
-	for _, run := range []struct{ record, graph string }{
-		{demoRecord, demoGraph},
-		{rideRecord, rideGraph},
-		{"../../../tetris/release-ride-2/.assembly-lines/ralph-loop/runs/ride/record.jsonl", "../../../tetris/release-ride-2/.assembly-lines/ralph-loop/assembly-line.dot"},
-		{"../../../tetris/release-ride-3/.assembly-lines/ralph-loop/runs/ride/record.jsonl", "../../../tetris/release-ride-3/.assembly-lines/ralph-loop/assembly-line.dot"},
-	} {
+	for _, run := range realRuns {
 		d := replayOf(t, run.record, run.graph)
 		if len(d.Frames) == 0 || d.Frames[0].At != 0 {
 			t.Errorf("%s: the frames don't start at 0", run.record)
