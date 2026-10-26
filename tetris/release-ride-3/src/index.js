@@ -12,14 +12,15 @@ if (!input.isTTY || !output.isTTY) {
 } else {
   let closed = false;
   let timer;
+  let screenOpen = false;
 
   function close() {
     if (closed) return;
     closed = true;
     clearInterval(timer);
-    input.setRawMode(false);
+    if (input.isRaw) input.setRawMode(false);
     input.pause();
-    output.write('\x1b[?25h\x1b[?1049l'); // Show cursor and leave alternate screen.
+    if (screenOpen) output.write('\x1b[?25h\x1b[?1049l'); // Show cursor and leave alternate screen.
   }
 
   function quit() {
@@ -29,17 +30,29 @@ if (!input.isTTY || !output.isTTY) {
 
   process.once('SIGINT', quit);
   process.once('SIGTERM', quit);
+  process.once('SIGHUP', quit);
   process.once('exit', close);
 
   readline.emitKeypressEvents(input);
   input.setRawMode(true);
   input.resume();
+  screenOpen = true;
   output.write('\x1b[?1049h\x1b[?25l\x1b[H\x1b[2J'); // Alternate screen, hide cursor.
-  const board = createBoard();
-  let active = spawnPiece(WIDTH);
-  let score = 0;
-  let lines = 0;
-  let gameOver = false;
+  let board;
+  let active;
+  let score;
+  let lines;
+  let gameOver;
+  function restart() {
+    clearInterval(timer);
+    board = createBoard();
+    active = spawnPiece(WIDTH);
+    score = 0;
+    lines = 0;
+    gameOver = false;
+    draw();
+    timer = setInterval(fall, 700);
+  }
   function draw() {
     output.write('\x1b[H' + render(board, { active, score, lines, gameOver }) + '\x1b[K');
   }
@@ -64,6 +77,7 @@ if (!input.isTTY || !output.isTTY) {
   }
   input.on('keypress', (_character, key) => {
     if (key?.name === 'q' || (key?.ctrl && key.name === 'c')) return quit();
+    if (key?.name === 'r') return restart();
     if (gameOver) return;
     if (key?.name === 'left') move(board, active, -1);
     else if (key?.name === 'right') move(board, active, 1);
@@ -76,6 +90,5 @@ if (!input.isTTY || !output.isTTY) {
     draw();
   });
 
-  draw();
-  timer = setInterval(fall, 700);
+  restart();
 }
