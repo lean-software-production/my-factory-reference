@@ -137,3 +137,4 @@
 {"time":"2026-10-26T03:43:19.241114104Z","kind":"usage","machine":"planner","provider":"openai-codex","model":"openai-codex/gpt-6-sol","input_tokens":8061,"output_tokens":520}
 {"time":"2026-10-26T03:43:19.241217452Z","kind":"result","machine":"planner","text":"{\"complete\": true, \"progress\": {\"done\": 10, \"total\": 10}}","result":{"complete":true,"progress":{"done":10,"total":10}}}
 {"time":"2026-10-26T03:43:19.241423567Z","kind":"end","machine":"planner"}
+{"time":"2026-10-26T03:43:19.263936323Z","kind":"run","run":"ride","state":"finished"}
