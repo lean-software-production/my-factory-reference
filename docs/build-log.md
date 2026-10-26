@@ -1544,3 +1544,15 @@ No `homework-*` tag and not the `2026.10.26` tag were moved, and
   agent: use pi-rpc-acp". `tetris/tetris-005`'s lines still name `pi`:
   they are homework 005's history and nothing reads them now (no test,
   script or feature names `tetris-005`).
+- **The leaking test.** `TestWatchEndedEarlyLeavesNoPinnedLine`'s
+  "the factory killed" subtest left its planner harness running about one
+  time in three (3 of 10 with `-count=10` before the fix) and a daemon
+  folder every time. Cleanups run last first, so the test wrote `go` and
+  then removed the folder it was in before the harness saw it; the harness,
+  in its own process group and with its daemon SIGKILLed, then waited for
+  ever. Now the harness stops waiting once its folder has gone, the cleanup
+  kills the planner's process group and waits for it to go, and the
+  daemon's folder (`$TMPDIR/factory-<uid>/<hash>`) is removed after the
+  factory is stopped. The check after the wipe no longer slices before it
+  knows there was one. `-count=10`, twice: 20 passes, no harness left, no
+  new daemon folder.

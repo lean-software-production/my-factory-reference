@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,15 +37,39 @@ func TestWatchEndedEarlyLeavesNoPinnedLine(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
+			// A daemon that is killed leaves its folder; this goes last,
+			// once the factory has been stopped.
+			var daemonDir string
+			t.Cleanup(func() {
+				if daemonDir != "" {
+					os.RemoveAll(daemonDir)
+				}
+			})
 			binary := buildFactory(t)
+			daemonDir = daemonStateDir(t, binary)
 			state, target := t.TempDir(), oneMachineTarget(t)
 			planner := acptest.Script(`echo $$ > "`+state+`/planner"
-while [ ! -f "`+state+`/go" ]; do sleep 0.01; done`, `{"complete": true}`)
+while [ -d "`+state+`" ] && [ ! -f "`+state+`/go" ]; do sleep 0.01; done`, `{"complete": true}`)
 			if err := os.WriteFile(filepath.Join(target, "harness"), []byte(planner), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			// Let the planner go however the test ends.
-			t.Cleanup(func() { os.WriteFile(filepath.Join(state, "go"), nil, 0o644) })
+			// However the test ends, let the planner go, and stop it and what
+			// is in its process group, which a killed daemon cannot do.
+			t.Cleanup(func() {
+				os.WriteFile(filepath.Join(state, "go"), nil, 0o644)
+				raw, _ := os.ReadFile(filepath.Join(state, "planner"))
+				pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+				if err != nil || pid <= 0 {
+					return
+				}
+				syscall.Kill(-pid, syscall.SIGKILL)
+				for deadline := time.Now().Add(10 * time.Second); !acptest.ProcessGone(pid); time.Sleep(10 * time.Millisecond) {
+					if time.Now().After(deadline) {
+						t.Errorf("the planner, process %d, was still running 10s after it was killed", pid)
+						return
+					}
+				}
+			})
 			runFactory(t, binary, target, "--run", "r", "--line", "only", "--seed", filepath.Join(target, "seed.md"), "--target", target)
 			acptest.WaitForFile(t, filepath.Join(state, "planner"))
 			daemon := daemonPid(t, binary)
@@ -95,10 +123,25 @@ while [ ! -f "`+state+`/go" ]; do sleep 0.01; done`, `{"complete": true}`)
 			got := shown()
 			// Whatever was last drawn on the line is wiped, and nothing is
 			// drawn after that.
-			after := got[strings.LastIndex(got, "\x1b[2K"):]
-			if !strings.Contains(got, "\x1b[2K") || strings.Contains(after, "▶") {
+			wiped := strings.LastIndex(got, "\x1b[2K")
+			if wiped < 0 {
+				t.Fatalf("the pinned line was never wiped:\n%q", got)
+			}
+			if after := got[wiped:]; strings.Contains(after, "▶") {
 				t.Errorf("the pinned line was left on the screen:\n%q", after)
 			}
 		})
 	}
+}
+
+// daemonStateDir is the folder of the daemon the factory binary starts: its
+// socket, its lock and its log.
+func daemonStateDir(t *testing.T, binary string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(real))
+	return filepath.Join(os.TempDir(), fmt.Sprintf("factory-%d", os.Getuid()), hex.EncodeToString(sum[:6]))
 }
