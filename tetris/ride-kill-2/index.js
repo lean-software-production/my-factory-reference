@@ -50,6 +50,16 @@ function lockPiece() {
   active.shape.cells.forEach((row, dy) => row.forEach((filled, dx) => {
     if (filled) board[active.y + dy][active.x + dx] = active.shape.name;
   }));
+  let cleared = 0;
+  for (let y = HEIGHT - 1; y >= 0; y--) {
+    if (board[y].every(Boolean)) {
+      board.splice(y, 1);
+      board.unshift(Array(WIDTH).fill(null));
+      cleared++;
+      y++; // Check this row again after the rows above shift down.
+    }
+  }
+  score += [0, 100, 300, 500, 800][cleared];
   // Spawning the next piece is added in a later step.
   active = null;
 }
